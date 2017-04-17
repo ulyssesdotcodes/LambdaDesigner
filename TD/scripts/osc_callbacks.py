@@ -21,7 +21,10 @@ classes = {
   'movieFileIn' : (moviefileinTOP, 'moviefilein', 'TOP'),
   'displace' : (displaceTOP, 'displace', 'TOP'),
   'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
-  'chopToTop' : (choptoTOP, 'chopto', 'TOP')
+  'chopToTop' : (choptoTOP, 'chopto', 'TOP'),
+  'outTop' : (outTOP, 'out', 'TOP'),
+  'outSop' : (outSOP, 'out', 'SOP'),
+  'sphere' : (sphereSOP, 'sphere', 'SOP')
 }
 
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
@@ -42,6 +45,11 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
     name = addr[(addr.rfind('/') + 1):]
     par = addr[:(addr.rfind('/'))]
     op(par).create(clazz[0], name)
+
+    if clazz[1] == 'out' and clazz[2] == 'SOP':
+      # TODO: Figure out a clean way to not special case this
+      op(addr).render = True
+      op(addr).display = True
 
   elif args[0] == "connect" and op(addr):
     op(addr).inputConnectors[args[1]].connect(op("/project1" + args[2]))
