@@ -1,8 +1,8 @@
-name:                FunctionalDesigner
+name:                LambdaDesigner
 version:             0.1.0.0
 -- synopsis:
 -- description:
-homepage:            https://github.com/githubuser/FunctionalDesigner#readme
+homepage:            https://github.com/ulyssesp/LambdaDesigner#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Author name here
@@ -27,23 +27,23 @@ library
                      , transformers >= 0.5
   default-language:    Haskell2010
 
-executable FunctionalDesigner-exe
+executable LambdaDesigner-exe
   hs-source-dirs:      app
   main-is:             Main.hs
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base
-                     , FunctionalDesigner
+                     , LambdaDesigner
   default-language:    Haskell2010
 
-test-suite FunctionalDesigner-test
+test-suite LambdaDesigner-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base
-                     , FunctionalDesigner
+                     , LambdaDesigner
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
 source-repository head
   type:     git
-  location: https://github.com/githubuser/FunctionalDesigner
+  location: https://github.com/githubuser/LambdaDesigner
