@@ -5,6 +5,7 @@
 module OSC where
 
 import Control.Monad.Trans.State.Lazy
+import Control.Lens
 import Data.Trie
 import Sound.OSC
 import Sound.OSC.Transport.FD as T
@@ -20,20 +21,12 @@ data Messagable = Create BS.ByteString
                 | Parameter BS.ByteString BS.ByteString deriving Eq
 
 instance Ord Message where
-  (<=) (Message _ ((ASCII_String "create"):_)) _ = True
-  (<=) _ _ = False
+  compare (Message (length . filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (length . filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
+  compare (Message _ ((ASCII_String "create"):_)) _ = LT
+  compare _ (Message _ ((ASCII_String "create"):_)) = GT
+  compare _ _ = EQ
 
 type Messages = Trie [Messagable]
-
--- data MessageType = Create
---                  | Connect
---                  | Parameter
-
--- instance Datem MessageType where
---   d_put Create = ASCII_String "create"
---   d_put Connect = ASCII_String "connect"
---   d_put Parameter = ASCII_String "parameter"
---   d_get _ = Nothing -- Not used
 
 parseTree :: (Monad m) => Tree a -> StateT Messages m String
 parseTree (MovieFileInTree top) = op0Messages top
@@ -43,21 +36,41 @@ parseTree (CHOPToTree top) = op0Messages top
 parseTree (OutTOPTree top op1) = op1Messages top op1
 parseTree (OutSOPTree sop op1) = op1Messages sop op1
 parseTree (SphereTree s) = op0Messages s
+parseTree (CameraTree c) = op0Messages c
+parseTree (RenderTree r) = op0Messages r
+parseTree (LightTree c) = op0Messages c
+parseTree (GeoTree c sop) = do addr <- op0Messages c
+                               tr <- execStateT (parseTree sop) empty
+                               let modMsg ((Connect i a):ms) = (Connect i (BS.concat [BS.pack addr, a])):(modMsg ms)
+                                   modMsg (m:ms) = m:(modMsg ms)
+                                   modMsg [] = []
+                               modify $ unionR . fromList . fmap (\(a, ms) -> (BS.concat [BS.pack addr, a], modMsg ms)) . toList $ tr
+                               return addr
+
+
 
 parseParam :: (Monad m) => Param a -> StateT Messages m BS.ByteString
 parseParam (File val) = do return val
-
-parseParam (CHOPPar chop) = do paddr <- parseTree chop
-                               return $ BS.pack $ "op(\"" ++ tail paddr ++ "\")"
-
 parseParam (CHOPOpPar choppar) = parseParam choppar
 parseParam (ShowP f) = parseParam f
 parseParam (F f) = pure $ BS.pack $ show f
 parseParam (I i) = pure $ BS.pack $ show i
 parseParam Seconds = pure $ "absTime.seconds"
-parseParam (Mult a b) = do abs <- parseParam a
-                           bbs <- parseParam b
-                           return $ BS.concat [abs, " * ", bbs]
+parseParam (Sin a) = parseParam a >>= \s -> return $ BS.concat ["math.sin(", s, ")"]
+parseParam (Sin' a) = parseParam (Sin a) >>= \s -> return $ BS.concat ["(0.5 + 0.5 * ", s, ")"]
+parseParam (Mult a b) = makeExpr a b "*"
+parseParam (Add a b) = makeExpr a b "+"
+
+parseParam (CHOPPar chop) = do paddr <- parseTree chop
+                               return $ BS.pack $ "op(\"" ++ tail paddr ++ "\")"
+
+parseParam (COMPPar comp) = do paddr <- parseTree comp
+                               return $ BS.pack $ "op(\"" ++ tail paddr ++ "\")"
+
+makeExpr :: (Monad m, Floating f) => Param f -> Param f -> BS.ByteString -> StateT Messages m BS.ByteString
+makeExpr a b op = do abs <- parseParam a
+                     bbs <- parseParam b
+                     return $ BS.concat ["(", abs," " ,op ," " , bbs, ")"]
 
 
 

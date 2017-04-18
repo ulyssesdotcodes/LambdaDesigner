@@ -24,7 +24,11 @@ classes = {
   'chopToTop' : (choptoTOP, 'chopto', 'TOP'),
   'outTop' : (outTOP, 'out', 'TOP'),
   'outSop' : (outSOP, 'out', 'SOP'),
-  'sphere' : (sphereSOP, 'sphere', 'SOP')
+  'sphere' : (sphereSOP, 'sphere', 'SOP'),
+  'geo' : (geometryCOMP, 'geo', 'COMP'),
+  'render' : (renderTOP, 'render', 'TOP'),
+  'camera' : (cameraCOMP, 'cam', 'COMP'),
+  'light' : (lightCOMP, 'light', 'COMP')
 }
 
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
@@ -46,10 +50,13 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
     par = addr[:(addr.rfind('/'))]
     op(par).create(clazz[0], name)
 
+    # TODO: Figure out a clean way to not special case these
     if clazz[1] == 'out' and clazz[2] == 'SOP':
-      # TODO: Figure out a clean way to not special case this
       op(addr).render = True
       op(addr).display = True
+
+    if clazz[1] == 'geometry':
+      op(addr + "/torus1").destroy()
 
   elif args[0] == "connect" and op(addr):
     op(addr).inputConnectors[args[1]].connect(op("/project1" + args[2]))
