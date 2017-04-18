@@ -34,7 +34,7 @@ classes = {
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
   global classes
 
-  addr = "/project1" + address
+  addr = "/project1/lambda" + address
   if args[0] == "create":
     clazz = classes.get(args[1], 'none')
     if clazz == "none":
@@ -55,11 +55,11 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
       op(addr).render = True
       op(addr).display = True
 
-    if clazz[1] == 'geometry':
+    if clazz[1] == 'geo':
       op(addr + "/torus1").destroy()
 
   elif args[0] == "connect" and op(addr):
-    op(addr).inputConnectors[args[1]].connect(op("/project1" + args[2]))
+    op(addr).inputConnectors[args[1]].connect(op("/project1/lambda" + args[2]))
 
   elif args[0] == "parameter" and op(addr):
     pars = op(addr).pars(args[1])
