@@ -28,17 +28,10 @@ instance Ord Message where
 
 type Messages = Trie [Messagable]
 
-parseTree :: (Monad m) => Tree a -> StateT Messages m String
-parseTree (MovieFileInTree top) = op0Messages top
+parseTree :: (Monad m, Op a) => Tree a -> StateT Messages m String
+parseTree (GeneratorTree a) = op0Messages a
+parseTree (EffectTree a aop) = op1Messages a aop
 parseTree (DisplaceTree top op1 op2) = op2Messages top op1 op2
-parseTree (NoiseCHOPTree chop) = op0Messages chop
-parseTree (CHOPToTree top) = op0Messages top
-parseTree (OutTOPTree top op1) = op1Messages top op1
-parseTree (OutSOPTree sop op1) = op1Messages sop op1
-parseTree (SphereTree s) = op0Messages s
-parseTree (CameraTree c) = op0Messages c
-parseTree (RenderTree r) = op0Messages r
-parseTree (LightTree c) = op0Messages c
 parseTree (GeoTree c sop) = do addr <- op0Messages c
                                tr <- execStateT (parseTree sop) empty
                                let modMsg ((Connect i a):ms) = (Connect i (BS.concat [BS.pack addr, a])):(modMsg ms)
@@ -51,13 +44,14 @@ parseTree (GeoTree c sop) = do addr <- op0Messages c
 
 parseParam :: (Monad m) => Param a -> StateT Messages m BS.ByteString
 parseParam (File val) = do return val
-parseParam (CHOPOpPar choppar) = parseParam choppar
+parseParam (CHOPChan choppar i) = do opPar <- parseParam (CHOPPar choppar)
+                                     return $ BS.concat [opPar, "[", BS.pack $ show i,"]"]
 parseParam (ShowP f) = parseParam f
 parseParam (F f) = pure $ BS.pack $ show f
 parseParam (I i) = pure $ BS.pack $ show i
 parseParam Seconds = pure $ "absTime.seconds"
 parseParam (Sin a) = parseParam a >>= \s -> return $ BS.concat ["math.sin(", s, ")"]
-parseParam (Sin' a) = parseParam (Sin a) >>= \s -> return $ BS.concat ["(0.5 + 0.5 * ", s, ")"]
+-- parseParam (Sin' a) = parseParam (Add (F 0.5) $ Mult (F 0.5) (Sin a))
 parseParam (Mult a b) = makeExpr a b "*"
 parseParam (Add a b) = makeExpr a b "+"
 

@@ -5,6 +5,8 @@
 
 module Op where
 
+import Prelude hiding (sin)
+
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Map.Strict as M
 
@@ -27,18 +29,53 @@ data Param a where
   COMPPar :: Tree COMP -> Param (Tree COMP)
   F :: (Floating n, Show n) => n -> Param n
   I :: (Integral i, Show i) => i -> Param i
-  CHOPOpPar :: Param (Tree CHOP) -> Param BS.ByteString
+  CHOPChan :: Tree CHOP -> Int -> Param Float
   ShowP :: Param a -> Param BS.ByteString
   Seconds :: Param Float
   Mult :: (Floating a) => Param a -> Param a -> Param Float
   Add :: (Floating a) => Param a -> Param a -> Param Float
   Sin :: (Floating a) => Param a -> Param Float
-  Sin' :: (Floating a) => Param a -> Param Float
 
 data Vec3 = Vec3 { _x :: Maybe (Param Float)
                  , _y :: Maybe (Param Float)
                  , _z :: Maybe (Param Float)
                  }
+
+file :: BS.ByteString -> Param BS.ByteString
+file = File
+
+chopPar :: Tree CHOP -> Param (Tree CHOP)
+chopPar = CHOPPar
+
+chopChan :: Tree CHOP -> Int -> Param Float
+chopChan = CHOPChan
+
+chopChan0 :: Tree CHOP -> Param Float
+chopChan0 = flip chopChan 0
+
+compPar :: Tree COMP -> Param (Tree COMP)
+compPar = COMPPar
+
+float :: (Floating n, Show n) => n -> Param n
+float = F
+
+int :: (Integral i, Show i) => i -> Param i
+int = I
+
+seconds :: Param Float
+seconds = Seconds
+
+(!*) :: (Floating a) => Param a -> Param a -> Param Float
+(!*) = Mult
+
+(!+) :: (Floating a) => Param a -> Param a -> Param Float
+(!+) = Add
+
+sin :: (Floating a) => Param a -> Param Float
+sin = Sin
+
+sin' :: (Floating a) => Param a -> Param Float
+sin' a = (float 0.5) !+ ((float 0.5) !* sin a)
 
 vec3Map :: String -> Vec3 -> M.Map BS.ByteString (Param BS.ByteString)
 vec3Map pre (Vec3 x y z) = fromListMaybe [ (BS.pack $ pre ++ "x", ShowP <$> x)
@@ -57,7 +94,7 @@ class Op a where
   opType :: a -> BS.ByteString
   opPars :: a -> M.Map BS.ByteString (Param BS.ByteString)
 
--- TOPs
+-- Ops (records are parameters)
 
 data TOP = CHOPTo { _chopToTop :: Param (Tree CHOP) }
              | Displace
@@ -67,6 +104,10 @@ data TOP = CHOPTo { _chopToTop :: Param (Tree CHOP) }
                       , _renderCamera :: Param (Tree COMP)
                       , _renderLight :: Maybe (Param (Tree COMP))
                       }
+             | Feedback
+             | Transform { _transformTranslate :: Vec3
+                         , _transformScale :: Vec3
+                         }
 
 data CHOP = NoiseCHOP { _noiseTranslate :: Vec3
                       , _noiseRoughness :: Maybe (Param Float)
@@ -86,33 +127,17 @@ data COMP = Geo { _geoTranslate :: Vec3
 -- Trees
 
 data Tree a where
-  CHOPToTree :: TOP -> Tree TOP
+  GeneratorTree :: a -> Tree a
+  EffectTree :: a -> Tree a -> Tree a
   DisplaceTree :: TOP -> Tree TOP -> Tree TOP -> Tree TOP
-  MovieFileInTree :: TOP -> Tree TOP
-  OutTOPTree :: TOP -> Tree TOP -> Tree TOP
-  RenderTree :: TOP -> Tree TOP
-
-  NoiseCHOPTree :: CHOP -> Tree CHOP
-
-  SphereTree :: SOP -> Tree SOP
-  OutSOPTree :: SOP -> Tree SOP -> Tree SOP
 
   GeoTree :: COMP -> Tree SOP -> Tree COMP
-  CameraTree :: COMP -> Tree COMP
-  LightTree :: COMP -> Tree COMP
 
 treePars :: Lens' (Tree a) a
-treePars f (CHOPToTree t) = fmap (\t' -> CHOPToTree t') (f t)
 treePars f (DisplaceTree t o1 o2) = fmap (\t' -> DisplaceTree t' o1 o2) (f t)
-treePars f (MovieFileInTree t) = fmap (\t' -> MovieFileInTree t') (f t)
-treePars f (OutTOPTree t top) = fmap (\t' -> OutTOPTree t' top) (f t)
-treePars f (RenderTree t) = fmap (\t' -> RenderTree t') (f t)
-treePars f (NoiseCHOPTree c) = fmap (\c' -> NoiseCHOPTree c') (f c)
-treePars f (SphereTree s) = fmap (\s' -> SphereTree s') (f s)
-treePars f (OutSOPTree s sop) = fmap (\s' -> OutSOPTree s' sop) (f s)
+treePars f (GeneratorTree a) = fmap (\a' -> GeneratorTree a') (f a)
+treePars f (EffectTree a aop) = fmap (\a' -> EffectTree a' aop) (f a)
 treePars f (GeoTree c sop) = fmap (\c' -> GeoTree c' sop) (f c)
-treePars f (CameraTree c) = fmap (\c' -> CameraTree c') (f c)
-treePars f (LightTree c) = fmap (\c' -> LightTree c') (f c)
 
 makeLenses ''CHOP
 makeLenses ''TOP
@@ -121,8 +146,10 @@ makeLenses ''COMP
 
 makeLenses ''Vec3
 
+-- Tops
+
 instance Op TOP where
-  opPars (CHOPTo chop) = M.singleton (BS.pack "chop") (CHOPOpPar chop)
+  opPars (CHOPTo chop) = M.singleton (BS.pack "chop") (ShowP chop)
   opPars Displace = M.empty
   opPars (MovieFileIn file) = M.singleton (BS.pack "file") file
   opPars OutTOP = M.empty
@@ -137,19 +164,19 @@ instance Op TOP where
   opType (Render _ _ _) = "render"
 
 movieFileIn :: String -> Tree TOP
-movieFileIn (BS.pack -> file) = MovieFileInTree (MovieFileIn (File file))
+movieFileIn (BS.pack -> file) = GeneratorTree (MovieFileIn (File file))
 
 displace :: Tree TOP -> Tree TOP -> Tree TOP
 displace = DisplaceTree Displace
 
 chopTo :: Tree CHOP -> Tree TOP
-chopTo = CHOPToTree . CHOPTo . CHOPPar
+chopTo = GeneratorTree . CHOPTo . CHOPPar
 
 outTop :: Tree TOP -> Tree TOP
-outTop = OutTOPTree OutTOP
+outTop = EffectTree OutTOP
 
 render :: Tree COMP -> Tree COMP -> Tree TOP
-render geo cam = RenderTree (Render (COMPPar geo) (COMPPar cam) Nothing)
+render geo cam = GeneratorTree (Render (COMPPar geo) (COMPPar cam) Nothing)
 
 -- CHOPs
 
@@ -164,7 +191,8 @@ alterMap ((n, v):ps) base = M.alter (const v) n $ alterMap ps base
 alterMap [] base = base
 
 noiseCHOP :: Tree CHOP
-noiseCHOP = NoiseCHOPTree (NoiseCHOP emptyV3 Nothing Nothing)
+-- noiseCHOP = NoiseCHOPTree (NoiseCHOP emptyV3 Nothing Nothing)
+noiseCHOP = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing)
 
 -- SOPs
 
@@ -175,10 +203,11 @@ instance Op SOP where
   opPars OutSOP = M.empty
 
 sphere :: Tree SOP
-sphere = SphereTree Sphere
+-- sphere = SphereTree Sphere
+sphere = GeneratorTree Sphere
 
 outSop :: Tree SOP -> Tree SOP
-outSop = OutSOPTree OutSOP
+outSop = EffectTree OutSOP
 
 -- COMPs
 instance Op COMP where
@@ -193,7 +222,7 @@ geo :: Tree SOP -> Tree COMP
 geo = GeoTree (Geo emptyV3 emptyV3)
 
 cam :: Tree COMP
-cam = CameraTree (Camera emptyV3)
+cam = GeneratorTree (Camera emptyV3)
 
 light :: Tree COMP
-light = LightTree Light
+light = GeneratorTree Light
