@@ -31,7 +31,7 @@ type Messages = Trie [Messagable]
 parseTree :: (Monad m, Op a) => Tree a -> StateT Messages m String
 parseTree (GeneratorTree a) = op0Messages a
 parseTree (EffectTree a aop) = op1Messages a aop
-parseTree (DisplaceTree top op1 op2) = op2Messages top op1 op2
+parseTree (CompositeTree top op1 op2) = op2Messages top op1 op2
 parseTree (GeoTree c sop) = do addr <- op0Messages c
                                tr <- execStateT (parseTree sop) empty
                                let modMsg ((Connect i a):ms) = (Connect i (BS.concat [BS.pack addr, a])):(modMsg ms)
@@ -39,6 +39,19 @@ parseTree (GeoTree c sop) = do addr <- op0Messages c
                                    modMsg [] = []
                                modify $ unionR . fromList . fmap (\(a, ms) -> (BS.concat [BS.pack addr, a], modMsg ms)) . toList $ tr
                                return addr
+
+parseTree (FeedbackTopTree top input transform composite) = do messages <- get
+                                                               fbaddr <- evalStateT (op0Messages top) messages
+                                                               inaddr <- evalStateT (parseTree input) messages
+                                                               let transformTree = transform $ GeneratorTree top
+                                                                   compTree = composite transformTree input
+                                                               compAddr <- parseTree compTree
+                                                               let connect = Connect 0 (BS.pack inaddr)
+                                                                   par = Parameter "top" (BS.pack $ "op(\"" ++ tail compAddr ++ "\")")
+                                                               modify $ adjust ((++) [connect, par]) (BS.pack fbaddr) -- Hacky but works because evalStateT is pure
+                                                               modify $ adjust ((:) connect) (BS.pack compAddr)
+                                                               return compAddr
+
 
 
 

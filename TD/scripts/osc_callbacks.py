@@ -28,7 +28,11 @@ classes = {
   'geo' : (geometryCOMP, 'geo', 'COMP'),
   'render' : (renderTOP, 'render', 'TOP'),
   'camera' : (cameraCOMP, 'cam', 'COMP'),
-  'light' : (lightCOMP, 'light', 'COMP')
+  'light' : (lightCOMP, 'light', 'COMP'),
+  'feedbackTop' : (feedbackTOP, 'feedback', 'TOP'),
+  'circle' : (circleTOP, 'circle', 'TOP'),
+  'compositeTop' : (compositeTOP, 'composite', 'TOP'),
+  'transform' : (transformTOP, 'transform', 'TOP')
 }
 
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
@@ -38,6 +42,7 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
   if args[0] == "create":
     clazz = classes.get(args[1], 'none')
     if clazz == "none":
+      print("Couldn't find " + args[1])
       return
 
     if op(addr) != None:

@@ -36,11 +36,6 @@ data Param a where
   Add :: (Floating a) => Param a -> Param a -> Param Float
   Sin :: (Floating a) => Param a -> Param Float
 
-data Vec3 = Vec3 { _x :: Maybe (Param Float)
-                 , _y :: Maybe (Param Float)
-                 , _z :: Maybe (Param Float)
-                 }
-
 file :: BS.ByteString -> Param BS.ByteString
 file = File
 
@@ -77,13 +72,28 @@ sin = Sin
 sin' :: (Floating a) => Param a -> Param Float
 sin' a = (float 0.5) !+ ((float 0.5) !* sin a)
 
+data Vec3 = Vec3 { _xy :: Vec2
+                 , _z :: Maybe (Param Float)
+                 }
+
+data Vec2 = Vec2 { _x :: Maybe (Param Float)
+                 , _y :: Maybe (Param Float)
+                 }
+
+vec2Map :: String -> Vec2 -> M.Map BS.ByteString (Param BS.ByteString)
+vec2Map pre (Vec2 x y) = fromListMaybe [ (BS.pack $ pre ++ "x", ShowP <$> x)
+                                       , (BS.pack $ pre ++ "y", ShowP <$> y)
+                                       ]
+
 vec3Map :: String -> Vec3 -> M.Map BS.ByteString (Param BS.ByteString)
-vec3Map pre (Vec3 x y z) = fromListMaybe [ (BS.pack $ pre ++ "x", ShowP <$> x)
-                                         , (BS.pack $ pre ++ "y", ShowP <$> y)
-                                         , (BS.pack $ pre ++ "z", ShowP <$> z)
-                                         ]
+vec3Map pre (Vec3 xy z) = M.union (vec2Map pre xy) $ fromListMaybe [ (BS.pack $ pre ++ "z", ShowP <$> z) ]
+
 emptyV3 :: Vec3
-emptyV3 = Vec3 Nothing Nothing Nothing
+emptyV3 = Vec3 emptyV2 Nothing
+
+emptyV2 :: Vec2
+emptyV2 = Vec2 Nothing Nothing
+
 
 fromListMaybe :: (Ord k) => [(k, Maybe a)] -> M.Map k a
 fromListMaybe = M.fromList . fmap (\(k, a) -> (k, fromJust a)) . filter (isJust . snd)
@@ -104,10 +114,12 @@ data TOP = CHOPTo { _chopToTop :: Param (Tree CHOP) }
                       , _renderCamera :: Param (Tree COMP)
                       , _renderLight :: Maybe (Param (Tree COMP))
                       }
-             | Feedback
-             | Transform { _transformTranslate :: Vec3
-                         , _transformScale :: Vec3
+             | FeedbackTOP
+             | Transform { _transformTranslate :: Vec2
+                         , _transformScale :: Vec2
                          }
+             | CompositeTOP { _operand :: Param Int }
+             | Circle
 
 data CHOP = NoiseCHOP { _noiseTranslate :: Vec3
                       , _noiseRoughness :: Maybe (Param Float)
@@ -129,21 +141,24 @@ data COMP = Geo { _geoTranslate :: Vec3
 data Tree a where
   GeneratorTree :: a -> Tree a
   EffectTree :: a -> Tree a -> Tree a
-  DisplaceTree :: TOP -> Tree TOP -> Tree TOP -> Tree TOP
+  CompositeTree :: a -> Tree a -> Tree a -> Tree a
+
+  FeedbackTopTree :: TOP -> Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP -> Tree TOP) -> Tree TOP
 
   GeoTree :: COMP -> Tree SOP -> Tree COMP
 
-treePars :: Lens' (Tree a) a
-treePars f (DisplaceTree t o1 o2) = fmap (\t' -> DisplaceTree t' o1 o2) (f t)
-treePars f (GeneratorTree a) = fmap (\a' -> GeneratorTree a') (f a)
-treePars f (EffectTree a aop) = fmap (\a' -> EffectTree a' aop) (f a)
-treePars f (GeoTree c sop) = fmap (\c' -> GeoTree c' sop) (f c)
+pars :: Lens' (Tree a) a
+pars f (CompositeTree t o1 o2) = fmap (\t' -> CompositeTree t' o1 o2) (f t)
+pars f (GeneratorTree a) = fmap (\a' -> GeneratorTree a') (f a)
+pars f (EffectTree a aop) = fmap (\a' -> EffectTree a' aop) (f a)
+pars f (GeoTree c sop) = fmap (\c' -> GeoTree c' sop) (f c)
 
 makeLenses ''CHOP
 makeLenses ''TOP
 makeLenses ''SOP
 makeLenses ''COMP
 
+makeLenses ''Vec2
 makeLenses ''Vec3
 
 -- Tops
@@ -157,17 +172,25 @@ instance Op TOP where
                                                 , ("camera", Just $ ShowP cam)
                                                 , ("lights", ShowP <$> light)
                                                 ]
+  opPars (Transform t s) = M.union (vec2Map "t" t) (vec2Map "s" s)
+  opPars (FeedbackTOP) = M.empty
+  opPars (CompositeTOP op) = fromListMaybe [("operand", Just $ ShowP op)]
+  opPars Circle = M.empty
   opType (CHOPTo _) = "chopToTop"
   opType (Displace) = "displace"
   opType (MovieFileIn _) = "movieFileIn"
   opType OutTOP = "outTop"
   opType (Render _ _ _) = "render"
+  opType FeedbackTOP = "feedbackTop"
+  opType Circle = "circle"
+  opType (CompositeTOP _) = "compositeTop"
+  opType (Transform _ _) = "transform"
 
 movieFileIn :: String -> Tree TOP
 movieFileIn (BS.pack -> file) = GeneratorTree (MovieFileIn (File file))
 
 displace :: Tree TOP -> Tree TOP -> Tree TOP
-displace = DisplaceTree Displace
+displace = CompositeTree Displace
 
 chopTo :: Tree CHOP -> Tree TOP
 chopTo = GeneratorTree . CHOPTo . CHOPPar
@@ -177,6 +200,18 @@ outTop = EffectTree OutTOP
 
 render :: Tree COMP -> Tree COMP -> Tree TOP
 render geo cam = GeneratorTree (Render (COMPPar geo) (COMPPar cam) Nothing)
+
+compTop :: Int -> Tree TOP -> Tree TOP -> Tree TOP
+compTop op = CompositeTree (CompositeTOP $ int op)
+
+feedback :: Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP -> Tree TOP) -> Tree TOP
+feedback = FeedbackTopTree $ FeedbackTOP
+
+circle :: Tree TOP
+circle = GeneratorTree Circle
+
+transformTop :: Tree TOP -> Tree TOP
+transformTop = EffectTree (Transform emptyV2 emptyV2)
 
 -- CHOPs
 
