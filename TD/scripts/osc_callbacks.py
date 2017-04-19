@@ -18,21 +18,29 @@
 #
 
 classes = {
-  'movieFileIn' : (moviefileinTOP, 'moviefilein', 'TOP'),
-  'displace' : (displaceTOP, 'displace', 'TOP'),
-  'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
   'chopToTop' : (choptoTOP, 'chopto', 'TOP'),
+  'circleTop' : (circleTOP, 'circle', 'TOP'),
+  'compositeTop' : (compositeTOP, 'comp', 'TOP'),
+  'displace' : (displaceTOP, 'displace', 'TOP'),
+  'feedbackTop' : (feedbackTOP, 'feedback', 'TOP'),
+  'movieFileIn' : (moviefileinTOP, 'moviefilein', 'TOP'),
   'outTop' : (outTOP, 'out', 'TOP'),
+  'render' : (renderTOP, 'render', 'TOP'),
+  'transform' : (transformTOP, 'transform', 'TOP'),
+
+  'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
+  'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
+  'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
+
+  'chopToSop' : (choptoSOP, 'chopto', 'SOP'),
+  'circleSop' : (circleSOP, 'circle', 'SOP'),
+  'noiseSop' : (noiseSOP, 'noise', 'SOP'),
   'outSop' : (outSOP, 'out', 'SOP'),
   'sphere' : (sphereSOP, 'sphere', 'SOP'),
-  'geo' : (geometryCOMP, 'geo', 'COMP'),
-  'render' : (renderTOP, 'render', 'TOP'),
+
   'camera' : (cameraCOMP, 'cam', 'COMP'),
-  'light' : (lightCOMP, 'light', 'COMP'),
-  'feedbackTop' : (feedbackTOP, 'feedback', 'TOP'),
-  'circle' : (circleTOP, 'circle', 'TOP'),
-  'compositeTop' : (compositeTOP, 'composite', 'TOP'),
-  'transform' : (transformTOP, 'transform', 'TOP')
+  'geo' : (geometryCOMP, 'geo', 'COMP'),
+  'light' : (lightCOMP, 'light', 'COMP')
 }
 
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):

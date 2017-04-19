@@ -4,6 +4,9 @@
 
 module OSC where
 
+import Op
+import Tree
+
 import Control.Monad.Trans.State.Lazy
 import Control.Lens
 import Data.Trie
@@ -13,8 +16,6 @@ import Sound.OSC.Transport.FD as T
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
-
-import Op
 
 data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
@@ -32,46 +33,41 @@ parseTree :: (Monad m, Op a) => Tree a -> StateT Messages m String
 parseTree (GeneratorTree a) = op0Messages a
 parseTree (EffectTree a aop) = op1Messages a aop
 parseTree (CompositeTree top op1 op2) = op2Messages top op1 op2
-parseTree (GeoTree c sop) = do addr <- op0Messages c
-                               tr <- execStateT (parseTree sop) empty
-                               let modMsg ((Connect i a):ms) = (Connect i (BS.concat [BS.pack addr, a])):(modMsg ms)
-                                   modMsg (m:ms) = m:(modMsg ms)
-                                   modMsg [] = []
-                               modify $ unionR . fromList . fmap (\(a, ms) -> (BS.concat [BS.pack addr, a], modMsg ms)) . toList $ tr
-                               return addr
+parseTree (ComponentTree c bop) = do addr <- op0Messages c
+                                     tr <- execStateT (parseTree bop) empty
+                                     let modMsg ((Connect i a):ms) = (Connect i (BS.concat [BS.pack addr, a])):(modMsg ms)
+                                         modMsg (m:ms) = m:(modMsg ms)
+                                         modMsg [] = []
+                                     modify $ unionR . fromList . fmap (\(a, ms) -> (BS.concat [BS.pack addr, a], modMsg ms)) . toList $ tr
+                                     return addr
 
-parseTree (FeedbackTopTree top input transform composite) = do messages <- get
-                                                               fbaddr <- evalStateT (op0Messages top) messages
-                                                               inaddr <- evalStateT (parseTree input) messages
-                                                               let transformTree = transform $ GeneratorTree top
-                                                                   compTree = composite transformTree input
-                                                               compAddr <- parseTree compTree
-                                                               let connect = Connect 0 (BS.pack inaddr)
-                                                                   par = Parameter "top" (BS.pack $ "op(\"" ++ tail compAddr ++ "\")")
-                                                               modify $ adjust ((++) [connect, par]) (BS.pack fbaddr) -- Hacky but works because evalStateT is pure
-                                                               modify $ adjust ((:) connect) (BS.pack compAddr)
-                                                               return compAddr
-
-
-
+parseTree (FeedbackTree top input transform composite) = do messages <- get
+                                                            fbaddr <- evalStateT (op0Messages top) messages
+                                                            inaddr <- evalStateT (parseTree input) messages
+                                                            let transformTree = transform $ GeneratorTree top
+                                                                compTree = composite transformTree input
+                                                            compAddr <- parseTree compTree
+                                                            let connect = Connect 0 (BS.pack inaddr)
+                                                                par = Parameter "top" (BS.pack $ "op(\"" ++ tail compAddr ++ "\")")
+                                                            modify $ adjust ((++) [connect, par]) (BS.pack fbaddr) -- Hacky but works because evalStateT is pure
+                                                            modify $ adjust ((:) connect) (BS.pack compAddr)
+                                                            return compAddr
 
 parseParam :: (Monad m) => Param a -> StateT Messages m BS.ByteString
 parseParam (File val) = do return val
-parseParam (CHOPChan choppar i) = do opPar <- parseParam (CHOPPar choppar)
-                                     return $ BS.concat [opPar, "[", BS.pack $ show i,"]"]
+parseParam (TreeFloat mod a) = do opstring <- parseParam a
+                                  return $ mod opstring
 parseParam (ShowP f) = parseParam f
 parseParam (F f) = pure $ BS.pack $ show f
 parseParam (I i) = pure $ BS.pack $ show i
+parseParam (S s) = pure $ BS.pack $ "\"" ++ s ++ "\""
 parseParam Seconds = pure $ "absTime.seconds"
 parseParam (Sin a) = parseParam a >>= \s -> return $ BS.concat ["math.sin(", s, ")"]
 -- parseParam (Sin' a) = parseParam (Add (F 0.5) $ Mult (F 0.5) (Sin a))
 parseParam (Mult a b) = makeExpr a b "*"
 parseParam (Add a b) = makeExpr a b "+"
 
-parseParam (CHOPPar chop) = do paddr <- parseTree chop
-                               return $ BS.pack $ "op(\"" ++ tail paddr ++ "\")"
-
-parseParam (COMPPar comp) = do paddr <- parseTree comp
+parseParam (TreePar tree) = do paddr <- parseTree tree
                                return $ BS.pack $ "op(\"" ++ tail paddr ++ "\")"
 
 makeExpr :: (Monad m, Floating f) => Param f -> Param f -> BS.ByteString -> StateT Messages m BS.ByteString
