@@ -14,9 +14,12 @@ import qualified Data.Map.Strict as M
 
 import Control.Lens
 
-data CHOP = NoiseCHOP { _noiseTranslate :: Vec3
-                      , _noiseRoughness :: Maybe (Param Float)
-                      , _noiseType :: Maybe (Param Int)
+data CHOP = NoiseCHOP { _noiseCTranslate :: Vec3
+                      , _noiseCRoughness :: Maybe (Param Float)
+                      , _noiseCType :: Maybe (Param Int)
+                      , _noiseCChannel :: Maybe (Param BS.ByteString)
+                      , _noiseCTimeSlice :: Maybe (Param Bool)
+                      , _noiseCPeriod :: Maybe (Param Float)
                       }
           | SOPToCHOP { _sopToChopSop :: Param (Tree SOP) }
 
@@ -34,9 +37,13 @@ data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
            | Transform { _transformTranslate :: Vec2
                        , _transformScale :: Vec2
                        }
-           | CompositeTOP { _operand :: Param Int }
+           | CompositeTOP { _compTOperand :: Param Int }
            | CircleTOP
-           | LevelTOP { _opacity :: Maybe (Param Float)
+           | LevelTOP { _levelOpacity :: Maybe (Param Float)
+                      }
+           | NoiseTOP { _noiseTMonochrome :: Maybe (Param Bool)
+                      , _noiseTResolution :: Dimen
+                      , _noiseTTranslate :: Vec3
                       }
 
 data SOP = Sphere
@@ -44,7 +51,7 @@ data SOP = Sphere
          | CircleSOP { _circType :: Maybe (Param Int)
                      , _circArc :: Maybe (Param Int)
                      }
-         | NoiseSOP
+         | NoiseSOP { _noiseSTranslate :: Vec3 }
          | CHOPToSOP { _chopToSopChop :: Param (Tree CHOP)
                      , _chopToSopAttrScope :: Maybe (Param BS.ByteString)
                      }
@@ -72,19 +79,30 @@ makeLenses ''MAT
 -- Chops
 
 instance Op CHOP where
-  opPars (NoiseCHOP t r nt) = M.union (fromListMaybe [ ("roughness", ShowP <$> r) , ("type", ShowP <$> nt)]) $ vec3Map "t" t
+  opPars (NoiseCHOP t r nt chan ts p) = M.union (fromListMaybe [ ("roughness", ShowP <$> r)
+                                                             , ("type", ShowP <$> nt)
+                                                             , ("channelname", chan)
+                                                             , ("timeslice", ShowP <$> ts)
+                                                             , ("period", ShowP <$> p)
+                                                             ]) $ vec3Map' "t" t
   opPars (SOPToCHOP s) = M.singleton "sop" $ ShowP s
-  opType (NoiseCHOP _ _ _) = "noiseCHOP"
+  opType (NoiseCHOP _ _ _ _ _ _) = "noiseCHOP"
   opType (SOPToCHOP _) = "sopToChop"
 
 noiseCHOP :: Tree CHOP
-noiseCHOP = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing)
+noiseCHOP = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing Nothing Nothing Nothing)
 
 chopChan :: Int -> Tree CHOP -> Param Float
 chopChan i = TreeFloat (\opstring -> BS.append opstring (BS.pack $ "[" ++ show i ++ "]")) . TreePar
 
+chopChanName :: String -> Tree CHOP -> Param Float
+chopChanName n = TreeFloat (\opstring -> BS.append opstring (BS.pack $ "[\'" ++ n ++ "\']")) . TreePar
+
 chopChan0 :: Tree CHOP -> Param Float
 chopChan0 = chopChan 0
+
+sampleTop :: Int -> (Int, Int) -> Tree TOP -> Param Float
+sampleTop n (x, y) = TreeFloat (\opstring -> BS.append opstring (BS.pack $ ".sample(x=" ++ show x ++ ",y=" ++ show y ++ ")[" ++ show n ++ "]")) . TreePar
 
 sopToChop :: Tree SOP -> Tree CHOP
 sopToChop = GeneratorTree . SOPToCHOP . TreePar
@@ -99,8 +117,9 @@ instance Op TOP where
   opPars (Render geo cam light) = fromListMaybe [ ("geometry", Just $ ShowP geo)
                                                 , ("camera", Just $ ShowP cam)
                                                 , ("lights", ShowP <$> light)]
-  opPars (Transform t s) = M.union (vec2Map "t" t) (vec2Map "s" s)
+  opPars (Transform t s) = M.union (vec2Map' "t" t) (vec2Map' "s" s)
   opPars (LevelTOP o) = fromListMaybe [("opacity", ShowP <$> o)]
+  opPars (NoiseTOP m r t) = M.unions  [(fromListMaybe [("mono", ShowP <$> m)]), (dimenMap "resolution" r), vec3Map' "t" t]
   opPars CircleTOP = M.empty
   opPars Displace = M.empty
   opPars OutTOP = M.empty
@@ -117,6 +136,7 @@ instance Op TOP where
   opType OutTOP = "outTop"
   opType NullTOP = "nullTop"
   opType (LevelTOP _) = "levelTop"
+  opType (NoiseTOP _ _ _) = "noiseTop"
 
 movieFileIn :: String -> Tree TOP
 movieFileIn (BS.pack -> file) = GeneratorTree (MovieFileIn (File file))
@@ -151,20 +171,23 @@ nullTop = EffectTree NullTOP
 levelTop :: Tree TOP -> Tree TOP
 levelTop = EffectTree (LevelTOP Nothing)
 
+noiseTop :: Tree TOP
+noiseTop = GeneratorTree (NoiseTOP Nothing emptyIV2 emptyV3)
+
 -- SOPs
 
 instance Op SOP where
   opPars (CircleSOP p a) = fromListMaybe [ ("type", ShowP <$> p)
                                          , ("arc", ShowP <$> a)
                                          ]
-  opPars (NoiseSOP) = M.empty
+  opPars (NoiseSOP t) = vec3Map' "t" t
   opPars OutSOP = M.empty
   opPars Sphere = M.empty
   opPars (CHOPToSOP c a) = fromListMaybe [ ("chop", Just $ ShowP c)
                                          , ("attscope", a)
                                          ]
   opType (CircleSOP _ _) = "circleSop"
-  opType (NoiseSOP) = "noiseSop"
+  opType (NoiseSOP _) = "noiseSop"
   opType OutSOP = "outSop"
   opType Sphere = "sphere"
   opType (CHOPToSOP _ _) = "chopToSop"
@@ -173,7 +196,7 @@ circleSop :: Tree SOP
 circleSop = GeneratorTree $ CircleSOP Nothing Nothing
 
 noiseSop :: Tree SOP -> Tree SOP
-noiseSop = EffectTree $ NoiseSOP
+noiseSop = EffectTree $ NoiseSOP emptyV3
 
 sphere :: Tree SOP
 sphere = GeneratorTree Sphere
@@ -191,15 +214,15 @@ instance Op MAT where
   opType (ConstantMAT _ _) = "constMat"
 
 constantMat :: Tree MAT
-constantMat = GeneratorTree (ConstantMAT emptyRgb Nothing)
+constantMat = GeneratorTree (ConstantMAT emptyV3 Nothing)
 
 -- COMPs
 instance Op COMP where
   opType (Geo _ _ _ _) = "geo"
   opType (Camera _) = "camera"
   opType Light = "light"
-  opPars (Geo t s m us) = M.unions [fromListMaybe [("material", ShowP <$> m), ("scale", ShowP <$> us)], (vec3Map "t" t), (vec3Map "s" s)]
-  opPars (Camera t) = vec3Map "t" t
+  opPars (Geo t s m us) = M.unions [fromListMaybe [("material", ShowP <$> m), ("scale", ShowP <$> us)], (vec3Map' "t" t), (vec3Map' "s" s)]
+  opPars (Camera t) = vec3Map' "t" t
   opPars Light = M.empty
 
 geo :: Tree SOP -> Tree COMP

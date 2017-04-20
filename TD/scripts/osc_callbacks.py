@@ -29,6 +29,7 @@ classes = {
   'render' : (renderTOP, 'render', 'TOP'),
   'levelTop' : (levelTOP, 'level', 'TOP'),
   'transform' : (transformTOP, 'transform', 'TOP'),
+  'noiseTop' : (noiseTOP, 'noise', 'TOP'),
 
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
   'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),

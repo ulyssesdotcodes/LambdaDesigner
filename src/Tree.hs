@@ -39,7 +39,8 @@ data Param a where
   F :: (Floating n, Show n) => n -> Param n
   I :: (Integral i, Show i) => i -> Param i
   S :: String -> Param ByteString
-  TreeFloat :: (Floating n) => (ByteString -> ByteString) -> Param (Tree a) -> Param n
+  B :: Bool -> Param Bool
+  TreeFloat :: (Floating n, Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param n
   ShowP :: Param a -> Param ByteString
   Seconds :: Param Float
   Mult :: (Floating a) => Param a -> Param a -> Param Float
@@ -70,47 +71,50 @@ sin = Sin
 sin' :: (Floating a) => Param a -> Param Float
 sin' a = (float 0.5) !+ ((float 0.5) !* sin a)
 
-data Vec3 = Vec3 { _xy :: Vec2
-                 , _z :: Maybe (Param Float)
-                 }
+type Vec3 = (Maybe (Param Float), Maybe (Param Float), Maybe (Param Float))
 
-data Vec2 = Vec2 { _x :: Maybe (Param Float)
-                 , _y :: Maybe (Param Float)
-                 }
+type Vec2 = (Maybe (Param Float), Maybe (Param Float))
 
-data RGB = RGB { _r :: Maybe (Param Float)
-               , _g :: Maybe (Param Float)
-               , _b :: Maybe (Param Float)
-               }
+type IVec2 = (Maybe (Param Int), Maybe (Param Int))
 
-makeLenses ''Vec2
-makeLenses ''Vec3
+type RGB = Vec3
 
-rgbMap :: String -> RGB -> Map ByteString (Param ByteString)
-rgbMap pre (RGB r g b) = fromListMaybe [ (pack $ pre ++ "r", ShowP <$> r)
-                                       , (pack $ pre ++ "g", ShowP <$> g)
-                                       , (pack $ pre ++ "b", ShowP <$> b)
-                                       ]
-
-emptyRgb :: RGB
-emptyRgb = RGB Nothing Nothing Nothing
+type Dimen = IVec2
 
 grey :: Float -> RGB
-grey = (\a -> RGB a a a) . Just . float
-
-vec2Map :: String -> Vec2 -> Map ByteString (Param ByteString)
-vec2Map pre (Vec2 x y) = fromListMaybe [ (pack $ pre ++ "x", ShowP <$> x)
-                                       , (pack $ pre ++ "y", ShowP <$> y)
-                                       ]
-
-vec3Map :: String -> Vec3 -> Map ByteString (Param ByteString)
-vec3Map pre (Vec3 xy z) = union (vec2Map pre xy) $ fromListMaybe [ (pack $ pre ++ "z", ShowP <$> z) ]
+grey = (\a -> (a, a, a)) . Just . float
 
 emptyV3 :: Vec3
-emptyV3 = Vec3 emptyV2 Nothing
+emptyV3 = (Nothing, Nothing, Nothing)
 
 emptyV2 :: Vec2
-emptyV2 = Vec2 Nothing Nothing
+emptyV2 = (Nothing, Nothing)
+
+emptyIV2 :: IVec2
+emptyIV2 = (Nothing, Nothing)
+
+rgbMap :: String -> RGB -> Map ByteString (Param ByteString)
+rgbMap = vec3Map ("r", "g", "b")
+
+dimenMap :: String -> Dimen-> Map ByteString (Param ByteString)
+dimenMap = vec2Map ("w", "h")
+
+vec2Map' :: String -> Vec2 -> Map ByteString (Param ByteString)
+vec2Map' = vec2Map ("x", "y")
+
+vec3Map' :: String -> Vec3 -> Map ByteString (Param ByteString)
+vec3Map' = vec3Map ("x", "y", "z")
+
+vec2Map :: (Show a) => (String, String) -> String -> (Maybe (Param a), Maybe (Param a)) -> Map ByteString (Param ByteString)
+vec2Map (x, y) pre (xv, yv) = fromListMaybe [ (pack $ pre ++ x, ShowP <$> xv)
+                                            , (pack $ pre ++ y, ShowP <$> yv)
+                                            ]
+
+vec3Map :: (String, String, String) -> String -> Vec3 -> Map ByteString (Param ByteString)
+vec3Map (x, y, z) pre (xv, yv, zv) = fromListMaybe [ (pack $ pre ++ x, ShowP <$> xv)
+                                                   , (pack $ pre ++ y, ShowP <$> yv)
+                                                   , (pack $ pre ++ z, ShowP <$> zv)
+                                                   ]
 
 fromListMaybe :: (Ord k) => [(k, Maybe a)] -> Map k a
 fromListMaybe = fromList . fmap (\(k, a) -> (k, fromJust a)) . Prelude.filter (isJust . snd)

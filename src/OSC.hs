@@ -69,6 +69,7 @@ parseParam (ShowP f) = parseParam f
 parseParam (F f) = pure $ BS.pack $ show f
 parseParam (I i) = pure $ BS.pack $ show i
 parseParam (S s) = pure $ BS.pack $ "\"" ++ s ++ "\""
+parseParam (B b) = pure $ BS.pack $ if b then show 1 else show 0
 parseParam Seconds = pure $ "absTime.seconds"
 parseParam (Sin a) = parseParam a >>= \s -> return $ BS.concat ["math.sin(", s, ")"]
 -- parseParam (Sin' a) = parseParam (Add (F 0.5) $ Mult (F 0.5) (Sin a))
