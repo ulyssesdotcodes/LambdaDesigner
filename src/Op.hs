@@ -111,7 +111,7 @@ instance Op TOP where
   opType (Render _ _ _) = "render"
   opType (Transform _ _) = "transform"
   opType CircleTOP = "circleTop"
-  opType FeedbackTOP = "feedbackTop"
+  opType (FeedbackTOP) = "feedbackTop"
   opType OutTOP = "outTop"
   opType NullTOP = "nullTop"
   opType (LevelTOP _) = "levelTop"
@@ -135,7 +135,7 @@ compTop :: Int -> Tree TOP -> Tree TOP -> Tree TOP
 compTop op = CompositeTree (CompositeTOP $ int op)
 
 feedbackTop :: Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP -> Tree TOP) -> Tree TOP
-feedbackTop = FeedbackTree $ FeedbackTOP
+feedbackTop = FeedbackTree FeedbackTOP
 
 circleTop :: Tree TOP
 circleTop = GeneratorTree CircleTOP

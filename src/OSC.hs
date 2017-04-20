@@ -19,9 +19,14 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 
+data CommandType = Pulse BS.ByteString deriving Eq
+
 data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
-                | Parameter BS.ByteString BS.ByteString deriving Eq
+                | Parameter BS.ByteString BS.ByteString
+                | Command CommandType
+                deriving Eq
+
 
 instance Ord Message where
   compare (Message (length . filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (length . filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
@@ -51,7 +56,8 @@ parseTree (FeedbackTree top input transform composite) = do messages <- get
                                                             compAddr <- parseTree compTree
                                                             let connect = Connect 0 (BS.pack inaddr)
                                                                 par = Parameter "top" (BS.pack $ "op(\"" ++ tail compAddr ++ "\")")
-                                                            modify $ adjust ((++) [connect, par]) (BS.pack fbaddr) -- Hacky but works because evalStateT is pure
+                                                            let resetMsg = Command $ Pulse "reset"
+                                                            modify $ adjust ((++) [resetMsg, connect, par]) (BS.pack fbaddr) -- Hacky but works because evalStateT is pure
                                                             modify $ adjust ((:) connect) (BS.pack compAddr)
                                                             return compAddr
 
@@ -125,7 +131,8 @@ makeMessages = L.sort . allMsgs . toList
                  addrMsgs addr ((Create ty):ms) = (Message (BS.unpack addr) [string "create", ASCII_String ty]):(addrMsgs addr ms)
                  addrMsgs addr ((Connect i caddr):ms) = (Message (BS.unpack addr) [string "connect", int32 i, ASCII_String caddr]):(addrMsgs addr ms)
                  addrMsgs addr ((Parameter k v):ms) = (Message (BS.unpack addr) [string "parameter", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
-                 addrMsgs addr [] = []
+                 addrMsgs addr ((Command (Pulse k)):ms) = (Message (BS.unpack addr) [string "command", string "pulse", ASCII_String k]):(addrMsgs addr ms)
+                 addrMsgs _ [] = []
 
 
 sendMessages :: UDP -> [Message] -> IO ()

@@ -86,6 +86,12 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
       else:
         pars[0].expr = args[2]
 
+  elif args[0] == "command" and op(addr):
+    if args[1] == "pulse":
+      pars = op(addr).pars(args[2])
+      if len(pars) > 0:
+        pars[0].pulse()
+
   return
 
 def isfloat(value):
