@@ -25,6 +25,7 @@ data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
            | Displace
            | MovieFileIn { _movieFileInFile :: Param BS.ByteString }
            | OutTOP
+           | NullTOP
            | Render { _renderGeo :: Param (Tree COMP)
                    , _renderCamera :: Param (Tree COMP)
                    , _renderLight :: Maybe (Param (Tree COMP))
@@ -35,6 +36,8 @@ data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
                        }
            | CompositeTOP { _operand :: Param Int }
            | CircleTOP
+           | LevelTOP { _opacity :: Maybe (Param Float)
+                      }
 
 data SOP = Sphere
          | OutSOP
@@ -46,12 +49,18 @@ data SOP = Sphere
                      , _chopToSopAttrScope :: Maybe (Param BS.ByteString)
                      }
 
+data MAT = ConstantMAT { _constColor :: RGB
+                       }
+
 data COMP = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
+                , _geoMat :: Maybe (Param (Tree MAT))
+                , _geoUniformScale :: Maybe (Param Float)
                 }
           | Camera { _camTranslate :: Vec3
                    }
           | Light
+
 
 makeLenses ''CHOP
 makeLenses ''TOP
@@ -89,9 +98,11 @@ instance Op TOP where
                                                 , ("camera", Just $ ShowP cam)
                                                 , ("lights", ShowP <$> light)]
   opPars (Transform t s) = M.union (vec2Map "t" t) (vec2Map "s" s)
+  opPars (LevelTOP o) = fromListMaybe [("opacity", ShowP <$> o)]
   opPars CircleTOP = M.empty
   opPars Displace = M.empty
   opPars OutTOP = M.empty
+  opPars NullTOP = M.empty
 
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP _) = "compositeTop"
@@ -102,6 +113,8 @@ instance Op TOP where
   opType CircleTOP = "circleTop"
   opType FeedbackTOP = "feedbackTop"
   opType OutTOP = "outTop"
+  opType NullTOP = "nullTop"
+  opType (LevelTOP _) = "levelTop"
 
 movieFileIn :: String -> Tree TOP
 movieFileIn (BS.pack -> file) = GeneratorTree (MovieFileIn (File file))
@@ -129,6 +142,12 @@ circleTop = GeneratorTree CircleTOP
 
 transformTop :: Tree TOP -> Tree TOP
 transformTop = EffectTree (Transform emptyV2 emptyV2)
+
+nullTop :: Tree TOP -> Tree TOP
+nullTop = EffectTree NullTOP
+
+levelTop :: Tree TOP -> Tree TOP
+levelTop = EffectTree (LevelTOP Nothing)
 
 -- SOPs
 
@@ -163,17 +182,26 @@ outSop = EffectTree OutSOP
 chopToSop :: Tree SOP -> Tree CHOP -> Tree SOP
 chopToSop s c = EffectTree (CHOPToSOP (treePar c) Nothing) s
 
+-- MATs
+
+instance Op MAT where
+  opPars (ConstantMAT rgb) = rgbMap "color" rgb
+  opType (ConstantMAT _) = "constMat"
+
+constantMat :: Tree MAT
+constantMat = GeneratorTree (ConstantMAT emptyRgb)
+
 -- COMPs
 instance Op COMP where
-  opType (Geo _ _) = "geo"
+  opType (Geo _ _ _ _) = "geo"
   opType (Camera _) = "camera"
   opType Light = "light"
-  opPars (Geo t s) = M.union (vec3Map "t" t) (vec3Map "s" s)
+  opPars (Geo t s m us) = M.unions [fromListMaybe [("material", ShowP <$> m), ("scale", ShowP <$> us)], (vec3Map "t" t), (vec3Map "s" s)]
   opPars (Camera t) = vec3Map "t" t
   opPars Light = M.empty
 
 geo :: Tree SOP -> Tree COMP
-geo = ComponentTree (Geo emptyV3 emptyV3)
+geo = ComponentTree (Geo emptyV3 emptyV3 Nothing Nothing)
 
 cam :: Tree COMP
 cam = GeneratorTree (Camera emptyV3)

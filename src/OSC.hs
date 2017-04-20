@@ -4,6 +4,8 @@
 
 module OSC where
 
+import Prelude hiding (lookup)
+
 import Op
 import Tree
 
@@ -75,8 +77,6 @@ makeExpr a b op = do abs <- parseParam a
                      bbs <- parseParam b
                      return $ BS.concat ["(", abs," " ,op ," " , bbs, ")"]
 
-
-
 op0Messages :: (Monad m, Op a) => a -> StateT Messages m String
 op0Messages a = do messages <- get
                    let ty = opType a
@@ -88,14 +88,14 @@ op0Messages a = do messages <- get
                                                                      let msg = Parameter k val
                                                                      modify $ adjust ((:) msg) (BS.pack addr)
                                                                      return ()):parstates) [] (opPars a)
-                   return addr
+                   removeDuplicates addr ty
 
 op1Messages :: (Monad m, Op a) => a -> Tree a -> StateT Messages m String
 op1Messages a op1 = do addr1 <- parseTree op1
                        addr <- op0Messages a
                        let connect = Connect 0 (BS.pack addr1)
                        modify $ adjust ((:) connect) (BS.pack addr)
-                       return addr
+                       removeDuplicates addr (opType a)
 
 op2Messages :: (Monad m, Op a) => a -> Tree a -> Tree a -> StateT Messages m String
 op2Messages a op1 op2 = do addr <- op1Messages a op1
@@ -104,10 +104,20 @@ op2Messages a op1 op2 = do addr <- op1Messages a op1
                            modify $ adjust ((:) connect2) (BS.pack addr)
                            return addr
 
-findEmpty :: Trie [Messagable] -> BS.ByteString
+removeDuplicates :: (Monad m) => String -> BS.ByteString -> StateT Messages m String
+removeDuplicates addr ty = do messages <- get
+                              let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
+                              let addrMsgs = lookup (BS.pack addr) messages
+                              -- If messages are all the same then they're equivalent so we can combine the nodes
+                              case filter (\(a, ms) -> a /= (BS.pack addr) && addrMsgs == Just ms) (toList nodesOfType) of
+                                ((maddr, _):_) -> do modify . delete . BS.pack $ addr
+                                                     return (BS.unpack maddr)
+                                _ -> return addr
+
+findEmpty :: Messages -> BS.ByteString
 findEmpty = BS.pack . show . length . keys
 
-makeMessages :: Trie [Messagable] -> [Message]
+makeMessages :: Messages -> [Message]
 makeMessages = L.sort . allMsgs . toList
                where
                  allMsgs ((addr, msgs):ms) = (addrMsgs addr msgs) ++ allMsgs ms

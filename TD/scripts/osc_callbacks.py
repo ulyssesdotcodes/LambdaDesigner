@@ -25,7 +25,9 @@ classes = {
   'feedbackTop' : (feedbackTOP, 'feedback', 'TOP'),
   'movieFileIn' : (moviefileinTOP, 'moviefilein', 'TOP'),
   'outTop' : (outTOP, 'out', 'TOP'),
+  'nullTop' : (outTOP, 'null', 'TOP'),
   'render' : (renderTOP, 'render', 'TOP'),
+  'levelTop' : (levelTOP, 'level', 'TOP'),
   'transform' : (transformTOP, 'transform', 'TOP'),
 
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
@@ -37,6 +39,8 @@ classes = {
   'noiseSop' : (noiseSOP, 'noise', 'SOP'),
   'outSop' : (outSOP, 'out', 'SOP'),
   'sphere' : (sphereSOP, 'sphere', 'SOP'),
+
+  'constMat' : (constantMAT, 'constant', 'MAT'),
 
   'camera' : (cameraCOMP, 'cam', 'COMP'),
   'geo' : (geometryCOMP, 'geo', 'COMP'),

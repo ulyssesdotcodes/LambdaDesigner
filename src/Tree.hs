@@ -78,8 +78,22 @@ data Vec2 = Vec2 { _x :: Maybe (Param Float)
                  , _y :: Maybe (Param Float)
                  }
 
+data RGB = RGB { _r :: Maybe (Param Float)
+               , _g :: Maybe (Param Float)
+               , _b :: Maybe (Param Float)
+               }
+
 makeLenses ''Vec2
 makeLenses ''Vec3
+
+rgbMap :: String -> RGB -> Map ByteString (Param ByteString)
+rgbMap pre (RGB r g b) = fromListMaybe [ (pack $ pre ++ "r", ShowP <$> r)
+                                       , (pack $ pre ++ "g", ShowP <$> g)
+                                       , (pack $ pre ++ "b", ShowP <$> b)
+                                       ]
+
+emptyRgb :: RGB
+emptyRgb = RGB Nothing Nothing Nothing
 
 vec2Map :: String -> Vec2 -> Map ByteString (Param ByteString)
 vec2Map pre (Vec2 x y) = fromListMaybe [ (pack $ pre ++ "x", ShowP <$> x)
