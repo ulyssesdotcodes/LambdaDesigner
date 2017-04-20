@@ -50,6 +50,7 @@ data SOP = Sphere
                      }
 
 data MAT = ConstantMAT { _constColor :: RGB
+                       , _constAlpha :: Maybe (Param Float)
                        }
 
 data COMP = Geo { _geoTranslate :: Vec3
@@ -66,6 +67,7 @@ makeLenses ''CHOP
 makeLenses ''TOP
 makeLenses ''SOP
 makeLenses ''COMP
+makeLenses ''MAT
 
 -- Chops
 
@@ -185,11 +187,11 @@ chopToSop s c = EffectTree (CHOPToSOP (treePar c) Nothing) s
 -- MATs
 
 instance Op MAT where
-  opPars (ConstantMAT rgb) = rgbMap "color" rgb
-  opType (ConstantMAT _) = "constMat"
+  opPars (ConstantMAT rgb alpha) = M.union (fromListMaybe [("alpha", ShowP <$> alpha)]) $ rgbMap "color" rgb
+  opType (ConstantMAT _ _) = "constMat"
 
 constantMat :: Tree MAT
-constantMat = GeneratorTree (ConstantMAT emptyRgb)
+constantMat = GeneratorTree (ConstantMAT emptyRgb Nothing)
 
 -- COMPs
 instance Op COMP where

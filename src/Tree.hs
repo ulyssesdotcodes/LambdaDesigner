@@ -95,6 +95,9 @@ rgbMap pre (RGB r g b) = fromListMaybe [ (pack $ pre ++ "r", ShowP <$> r)
 emptyRgb :: RGB
 emptyRgb = RGB Nothing Nothing Nothing
 
+grey :: Float -> RGB
+grey = (\a -> RGB a a a) . Just . float
+
 vec2Map :: String -> Vec2 -> Map ByteString (Param ByteString)
 vec2Map pre (Vec2 x y) = fromListMaybe [ (pack $ pre ++ "x", ShowP <$> x)
                                        , (pack $ pre ++ "y", ShowP <$> y)
