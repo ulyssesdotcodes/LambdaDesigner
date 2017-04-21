@@ -1,3 +1,6 @@
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE QuasiQuotes, OverloadedStrings #-}
+
 module Scratch where
 
 import Op
@@ -26,9 +29,26 @@ circsop = circleSop
           & pars . circType .~ Just (int 2)
           & pars . circArc .~ Just (int 1)
 
+sampleColor i n = Just (sampleTop i (0,0) n)
+
 color = constantMat
-        & pars . constColor .~ (Just (sampleTop 0 (0,0) noiset), Just (sampleTop 1 (0,0) noiset), Just (sampleTop 1 (0,0) noiset))
+        & pars . constColor .~ (sampleColor 0 colorRamp, sampleColor 1 colorRamp, sampleColor 2 colorRamp)
         & pars.constAlpha.~ Just (float 0.3)
+
+colorRamp = ramp [(0, 1.0, 0.0, 0.0, 1.0), (0.5, 0.0, 0.0, 1.0, 1.0), (0.5, 0.0, 0.0, 1.0, 1.0)]
+            & pars . rampType .~ Just (int 1)
+            & pars . rampResolution .~ (Just (int 200), Just (int 1))
+            & pars.rampPhase .~ Just (seconds !* (float 0.4))
+
+limitVal =
+  "  if val > 3: \n\
+  \     op('movie').par.value0 = 2 \n\
+  \  return "
+
+testchopexec =
+  chopExec (noiseCHOP)
+  & pars . ceValueChange .~ Just limitVal
+  & pars . ceOffToOn .~ Just limitVal
 
 circgeom = geo
            <&> pars . geoTranslate._1 .~ Just (chopChanName "tx" xynoise !* float 2.5)

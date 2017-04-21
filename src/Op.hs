@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Op where
 
@@ -11,6 +12,7 @@ import Tree
 
 import Control.Lens
 import Data.Matrix
+import Data.Maybe
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Map.Strict as M
@@ -46,7 +48,10 @@ data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
                       , _noiseTResolution :: Dimen
                       , _noiseTTranslate :: Vec3
                       }
-           | Ramp { _rampValues :: Param (Tree DAT)
+           | Ramp { _rampType :: Maybe (Param Int)
+                  , _rampPhase :: Maybe (Param Float)
+                  , _rampResolution :: Dimen
+                  , _rampValues :: Param (Tree DAT)
                   }
 
 data SOP = Sphere
@@ -65,6 +70,13 @@ data MAT = ConstantMAT { _constColor :: RGB
 
 data DAT = Table { _text :: Matrix BS.ByteString
                  }
+         | ChopExec { _chopExecChop :: Param (Tree CHOP)
+                    , _ceOffToOn :: Maybe BS.ByteString
+                    , _ceWhileOn :: Maybe BS.ByteString
+                    , _ceOnToOff :: Maybe BS.ByteString
+                    , _ceWhileOff :: Maybe BS.ByteString
+                    , _ceValueChange :: Maybe BS.ByteString
+                    }
 
 data COMP = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
@@ -81,6 +93,7 @@ makeLenses ''TOP
 makeLenses ''SOP
 makeLenses ''COMP
 makeLenses ''MAT
+makeLenses ''DAT
 
 -- Chops
 
@@ -131,7 +144,7 @@ instance Op TOP where
   opPars Displace = M.empty
   opPars OutTOP = M.empty
   opPars NullTOP = M.empty
-  opPars (Ramp dat) = M.singleton "dat" (ShowP $ dat)
+  opPars (Ramp t p r dat) = M.union (dimenMap "resolution" r) $ fromListMaybe [("dat", Just (ShowP $ dat)), ("type", ShowP <$> t), ("phase", ShowP <$> p)]
 
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP _) = "compositeTop"
@@ -145,7 +158,7 @@ instance Op TOP where
   opType NullTOP = "nullTop"
   opType (LevelTOP _) = "levelTop"
   opType (NoiseTOP _ _ _) = "noiseTop"
-  opType (Ramp _) = "ramp"
+  opType (Ramp _ _ _ _) = "ramp"
 
   opText _ = Nothing
 
@@ -186,7 +199,7 @@ noiseTop :: Tree TOP
 noiseTop = GeneratorTree (NoiseTOP Nothing emptyIV2 emptyV3)
 
 ramp :: [(Float, Float, Float, Float, Float)] -> Tree TOP
-ramp = GeneratorTree . Ramp . treePar . table . fromLists . map (^..each) . ((:) ("pos", "r", "g", "b", "a")) . map ((over each) (BS.pack . show))
+ramp = GeneratorTree . (Ramp Nothing Nothing emptyIV2) . treePar . table . fromLists . map (^..each) . ((:) ("pos", "r", "g", "b", "a")) . map ((over each) (BS.pack . show))
 
 -- SOPs
 
@@ -236,11 +249,36 @@ constantMat = GeneratorTree (ConstantMAT emptyV3 Nothing)
 -- DATs
 instance Op DAT where
   opPars (Table _) = M.empty
+  opPars (ChopExec chop offon won onoff woff vc ) = M.fromList [("chop", ShowP chop)
+                                                               , ("offtoon", ShowP . B $ isJust offon)
+                                                               , ("whileon", ShowP . B $ isJust won)
+                                                               , ("ontooff", ShowP . B $ isJust onoff)
+                                                               , ("whileoff", ShowP . B $ isJust woff)
+                                                               , ("valuechange", ShowP . B $ isJust vc)
+                                                               ]
   opType (Table _) = "table"
+  opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opText (Table t) = Just . BS.intercalate ("\n") . map (BS.intercalate ("\t")) . toLists $ t
+  opText (ChopExec _ offon won onoff woff vc) =
+    Just . BS.intercalate "\n\n" . (traverse %~ concatFunc)
+      $ catMaybes [ ("offToOn",) <$> offon
+                  , ("whileOn",) <$> won
+                  , ("onToOff",) <$> onoff
+                  , ("whileOff",) <$>  woff
+                  , ("valueChange",) <$> vc
+                  ]
+    where
+      concatFunc (name, body) = BS.append (makeChopExecFunc name) body
+
+makeChopExecFunc :: BS.ByteString -> BS.ByteString
+makeChopExecFunc prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev): \n"]
 
 table :: Matrix BS.ByteString -> Tree DAT
 table = GeneratorTree . Table
+
+chopExec :: Tree CHOP -> Tree DAT
+chopExec chop = GeneratorTree $ ChopExec (treePar chop) Nothing Nothing Nothing Nothing Nothing
+
 
 -- COMPs
 instance Op COMP where

@@ -44,6 +44,7 @@ classes = {
 
   'constMat' : (constantMAT, 'constant', 'MAT'),
 
+  'chopExec' : (chopexecuteDAT, 'chopexecute', 'DAT'),
   'table' : (tableDAT, 'table', 'DAT'),
 
   'camera' : (cameraCOMP, 'cam', 'COMP'),
