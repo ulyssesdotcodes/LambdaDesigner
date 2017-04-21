@@ -9,10 +9,11 @@ import Prelude hiding (sin)
 
 import Tree
 
+import Control.Lens
+import Data.Matrix
+
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Map.Strict as M
-
-import Control.Lens
 
 data CHOP = NoiseCHOP { _noiseCTranslate :: Vec3
                       , _noiseCRoughness :: Maybe (Param Float)
@@ -45,6 +46,8 @@ data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
                       , _noiseTResolution :: Dimen
                       , _noiseTTranslate :: Vec3
                       }
+           | Ramp { _rampValues :: Param (Tree DAT)
+                  }
 
 data SOP = Sphere
          | OutSOP
@@ -59,6 +62,9 @@ data SOP = Sphere
 data MAT = ConstantMAT { _constColor :: RGB
                        , _constAlpha :: Maybe (Param Float)
                        }
+
+data DAT = Table { _text :: Matrix BS.ByteString
+                 }
 
 data COMP = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
@@ -88,6 +94,7 @@ instance Op CHOP where
   opPars (SOPToCHOP s) = M.singleton "sop" $ ShowP s
   opType (NoiseCHOP _ _ _ _ _ _) = "noiseCHOP"
   opType (SOPToCHOP _) = "sopToChop"
+  opText _ = Nothing
 
 noiseCHOP :: Tree CHOP
 noiseCHOP = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing Nothing Nothing Nothing)
@@ -124,6 +131,7 @@ instance Op TOP where
   opPars Displace = M.empty
   opPars OutTOP = M.empty
   opPars NullTOP = M.empty
+  opPars (Ramp dat) = M.singleton "dat" (ShowP $ dat)
 
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP _) = "compositeTop"
@@ -137,6 +145,9 @@ instance Op TOP where
   opType NullTOP = "nullTop"
   opType (LevelTOP _) = "levelTop"
   opType (NoiseTOP _ _ _) = "noiseTop"
+  opType (Ramp _) = "ramp"
+
+  opText _ = Nothing
 
 movieFileIn :: String -> Tree TOP
 movieFileIn (BS.pack -> file) = GeneratorTree (MovieFileIn (File file))
@@ -174,6 +185,9 @@ levelTop = EffectTree (LevelTOP Nothing)
 noiseTop :: Tree TOP
 noiseTop = GeneratorTree (NoiseTOP Nothing emptyIV2 emptyV3)
 
+ramp :: [(Float, Float, Float, Float, Float)] -> Tree TOP
+ramp = GeneratorTree . Ramp . treePar . table . fromLists . map (^..each) . ((:) ("pos", "r", "g", "b", "a")) . map ((over each) (BS.pack . show))
+
 -- SOPs
 
 instance Op SOP where
@@ -191,6 +205,8 @@ instance Op SOP where
   opType OutSOP = "outSop"
   opType Sphere = "sphere"
   opType (CHOPToSOP _ _) = "chopToSop"
+
+  opText _ = Nothing
 
 circleSop :: Tree SOP
 circleSop = GeneratorTree $ CircleSOP Nothing Nothing
@@ -212,9 +228,19 @@ chopToSop s c = EffectTree (CHOPToSOP (treePar c) Nothing) s
 instance Op MAT where
   opPars (ConstantMAT rgb alpha) = M.union (fromListMaybe [("alpha", ShowP <$> alpha)]) $ rgbMap "color" rgb
   opType (ConstantMAT _ _) = "constMat"
+  opText _ = Nothing
 
 constantMat :: Tree MAT
 constantMat = GeneratorTree (ConstantMAT emptyV3 Nothing)
+
+-- DATs
+instance Op DAT where
+  opPars (Table _) = M.empty
+  opType (Table _) = "table"
+  opText (Table t) = Just . BS.intercalate ("\n") . map (BS.intercalate ("\t")) . toLists $ t
+
+table :: Matrix BS.ByteString -> Tree DAT
+table = GeneratorTree . Table
 
 -- COMPs
 instance Op COMP where
@@ -224,6 +250,7 @@ instance Op COMP where
   opPars (Geo t s m us) = M.unions [fromListMaybe [("material", ShowP <$> m), ("scale", ShowP <$> us)], (vec3Map' "t" t), (vec3Map' "s" s)]
   opPars (Camera t) = vec3Map' "t" t
   opPars Light = M.empty
+  opText _ = Nothing
 
 geo :: Tree SOP -> Tree COMP
 geo = ComponentTree (Geo emptyV3 emptyV3 Nothing Nothing)

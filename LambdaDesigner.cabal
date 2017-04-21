@@ -25,6 +25,7 @@ library
                      , containers >= 0.5
                      , hosc
                      , lens
+                     , matrix
                      , transformers >= 0.5
   default-language:    Haskell2010
 

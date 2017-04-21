@@ -24,6 +24,7 @@ data CommandType = Pulse BS.ByteString deriving Eq
 data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
                 | Parameter BS.ByteString BS.ByteString
+                | TextContent BS.ByteString
                 | Command CommandType
                 deriving Eq
 
@@ -90,7 +91,11 @@ op0Messages a = do messages <- get
                    let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
                    let addr = "/" ++ (BS.unpack . BS.append ty $ findEmpty nodesOfType)
                    let createMessage = Create ty
-                   modify $ insert (BS.pack addr) [createMessage]
+                   let textMessage =
+                         case opText a of
+                           Just content -> [TextContent content]
+                           Nothing -> []
+                   modify $ insert (BS.pack addr) (createMessage:textMessage)
                    sequence_ $ M.foldrWithKey (\k p parstates -> (do val <- parseParam p
                                                                      let msg = Parameter k val
                                                                      modify $ adjust ((:) msg) (BS.pack addr)
@@ -133,6 +138,7 @@ makeMessages = L.sort . allMsgs . toList
                  addrMsgs addr ((Connect i caddr):ms) = (Message (BS.unpack addr) [string "connect", int32 i, ASCII_String caddr]):(addrMsgs addr ms)
                  addrMsgs addr ((Parameter k v):ms) = (Message (BS.unpack addr) [string "parameter", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
                  addrMsgs addr ((Command (Pulse k)):ms) = (Message (BS.unpack addr) [string "command", string "pulse", ASCII_String k]):(addrMsgs addr ms)
+                 addrMsgs addr ((TextContent content):ms) = (Message (BS.unpack addr) [string "text", ASCII_String content]):(addrMsgs addr ms)
                  addrMsgs _ [] = []
 
 

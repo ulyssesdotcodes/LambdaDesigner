@@ -30,6 +30,7 @@ classes = {
   'levelTop' : (levelTOP, 'level', 'TOP'),
   'transform' : (transformTOP, 'transform', 'TOP'),
   'noiseTop' : (noiseTOP, 'noise', 'TOP'),
+  'ramp' : (rampTOP, 'ramp', 'TOP'),
 
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
   'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
@@ -42,6 +43,8 @@ classes = {
   'sphere' : (sphereSOP, 'sphere', 'SOP'),
 
   'constMat' : (constantMAT, 'constant', 'MAT'),
+
+  'table' : (tableDAT, 'table', 'DAT'),
 
   'camera' : (cameraCOMP, 'cam', 'COMP'),
   'geo' : (geometryCOMP, 'geo', 'COMP'),
@@ -92,6 +95,9 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
       pars = op(addr).pars(args[2])
       if len(pars) > 0:
         pars[0].pulse()
+
+  elif args[0] == "text" and op(addr):
+    op(addr).text = args[1]
 
   return
 

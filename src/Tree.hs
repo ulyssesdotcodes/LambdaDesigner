@@ -29,6 +29,7 @@ pars f (ComponentTree a aop) = fmap (\a' -> ComponentTree a' aop) (f a)
 class Op a where
   opType :: a -> ByteString
   opPars :: a -> Map ByteString (Param ByteString)
+  opText :: a -> Maybe ByteString
 
 treePar :: (Op a) => Tree a -> Param (Tree a)
 treePar = TreePar
