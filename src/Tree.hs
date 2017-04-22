@@ -1,9 +1,10 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Tree where
 
-import Prelude hiding (sin)
+import Prelude hiding (sin, concat, floor)
 
 import Control.Lens
 import Data.ByteString.Char8
@@ -41,12 +42,16 @@ data Param a where
   I :: (Integral i, Show i) => i -> Param i
   S :: String -> Param ByteString
   B :: Bool -> Param Bool
-  TreeFloat :: (Floating n, Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param n
+  MakeFloat :: (Integral a, Floating b, Show a, Show b) => Param a -> Param b
+  TreeFloat :: (Num n, Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param n
+  TreeString :: (Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param ByteString
   ShowP :: Param a -> Param ByteString
   Seconds :: Param Float
-  Mult :: (Floating a) => Param a -> Param a -> Param Float
-  Add :: (Floating a) => Param a -> Param a -> Param Float
-  Sin :: (Floating a) => Param a -> Param Float
+  Mult :: (Num a, Show a) => Param a -> Param a -> Param a
+  Add :: (Num a, Show a) => Param a -> Param a -> Param a
+  Mod :: (Num a, Num b, Show a) => (ByteString -> ByteString) -> Param a -> Param b
+  Mod2 :: (Num a, Num b, Num c, Show a, Show b, Show c) => (ByteString -> ByteString -> ByteString) -> Param a -> Param b -> Param c
+  Cell :: (Integral a, Integral b, Op c) => Param a -> Param b -> Param (Tree c) -> Param ByteString
 
 file :: ByteString -> Param ByteString
 file = File
@@ -57,20 +62,35 @@ float = F
 int :: (Integral i, Show i) => i -> Param i
 int = I
 
+toFloat :: (Integral a, Floating b, Show a, Show b) => Param a -> Param b
+toFloat = MakeFloat
+
 seconds :: Param Float
 seconds = Seconds
 
-(!*) :: (Floating a) => Param a -> Param a -> Param Float
+(!*) :: (Num a, Show a) => Param a -> Param a -> Param a
 (!*) = Mult
 
-(!+) :: (Floating a) => Param a -> Param a -> Param Float
+(!+) :: (Num a, Show a) => Param a -> Param a -> Param a
 (!+) = Add
 
-sin :: (Floating a) => Param a -> Param Float
-sin = Sin
+sin :: (Floating a, Show a) => Param a -> Param a
+sin = mathFunc "sin"
 
-sin' :: (Floating a) => Param a -> Param Float
+sin' :: (Floating a, Show a) => Param a -> Param a
 sin' a = (float 0.5) !+ ((float 0.5) !* sin a)
+
+floor :: (Floating a, Show a) => Param a -> Param a
+floor = mathFunc "floor"
+
+floori :: (Floating a, Integral b, Show a, Show b) => Param a -> Param b
+floori = mathFunc "floor"
+
+mod :: (Num a, Show a) => Param a -> Param a -> Param a
+mod = Mod2 (\op1 op2 -> concat ["(", op1, "%", op2, ")"])
+
+mathFunc :: (Num a, Num b, Show a) => ByteString -> Param a -> Param b
+mathFunc f = Mod (\op -> concat ["math.", f, "(", op, ")"])
 
 type Vec3 = (Maybe (Param Float), Maybe (Param Float), Maybe (Param Float))
 

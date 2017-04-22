@@ -33,6 +33,7 @@ instance Ord Message where
   compare (Message (length . filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (length . filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
   compare (Message _ ((ASCII_String "create"):_)) _ = LT
   compare _ (Message _ ((ASCII_String "create"):_)) = GT
+  compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
   compare _ _ = EQ
 
 type Messages = Trie [Messagable]
@@ -66,21 +67,27 @@ parseParam :: (Monad m) => Param a -> StateT Messages m BS.ByteString
 parseParam (File val) = do return val
 parseParam (TreeFloat mod a) = do opstring <- parseParam a
                                   return $ mod opstring
+parseParam (TreeString mod a) = do opstring <- parseParam a
+                                   return $ mod opstring
 parseParam (ShowP f) = parseParam f
 parseParam (F f) = pure $ BS.pack $ show f
 parseParam (I i) = pure $ BS.pack $ show i
 parseParam (S s) = pure $ BS.pack $ "\"" ++ s ++ "\""
 parseParam (B b) = pure $ BS.pack $ if b then show 1 else show 0
+parseParam (MakeFloat i) = parseParam i
 parseParam Seconds = pure $ "absTime.seconds"
-parseParam (Sin a) = parseParam a >>= \s -> return $ BS.concat ["math.sin(", s, ")"]
--- parseParam (Sin' a) = parseParam (Add (F 0.5) $ Mult (F 0.5) (Sin a))
 parseParam (Mult a b) = makeExpr a b "*"
 parseParam (Add a b) = makeExpr a b "+"
-
+parseParam (Mod f a) = parseParam a >>= \s -> return $ f s
+parseParam (Mod2 f a b) = parseParam a >>= \s -> parseParam b >>= \t -> return $ f s t
+parseParam (Cell a b t) = do ta <- parseParam t
+                             aa <- parseParam a
+                             ab <- parseParam b
+                             return $ BS.concat [ta, "[", aa, ",", ab, "]"]
 parseParam (TreePar tree) = do paddr <- parseTree tree
                                return $ BS.pack $ "op(\"" ++ tail paddr ++ "\")"
 
-makeExpr :: (Monad m, Floating f) => Param f -> Param f -> BS.ByteString -> StateT Messages m BS.ByteString
+makeExpr :: (Monad m, Num f) => Param f -> Param f -> BS.ByteString -> StateT Messages m BS.ByteString
 makeExpr a b op = do abs <- parseParam a
                      bbs <- parseParam b
                      return $ BS.concat ["(", abs," " ,op ," " , bbs, ")"]

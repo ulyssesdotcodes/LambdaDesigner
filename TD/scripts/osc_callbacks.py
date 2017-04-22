@@ -32,7 +32,10 @@ classes = {
   'noiseTop' : (noiseTOP, 'noise', 'TOP'),
   'ramp' : (rampTOP, 'ramp', 'TOP'),
 
+  'constantChop' : (constantCHOP, 'constant', 'CHOP'),
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
+  'hold' : (holdCHOP, 'hold', 'CHOP'),
+  'logic' : (logicCHOP, 'logic', 'CHOP'),
   'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
   'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
 

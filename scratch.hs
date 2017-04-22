@@ -7,13 +7,33 @@ import Op
 import Tree
 import Lib
 
+import Prelude hiding (floor, mod)
+
 import Control.Lens
 import Data.Matrix
 
 import qualified Data.ByteString.Char8 as BS
 
+secChop = constChop (floor seconds)
+
+held = logic secChop & pars.logicPreop .~ Just (int 2) & pars.logicConvert .~ Just (int 3)
+
+invert l = logic l & pars.logicPreop .~ Just (int 1)
+
+movieIndA = hold secChop held
+movieIndB = hold secChop (invert held)
+
+movies = table $ fromLists [["C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Anna.mp4"
+                            , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\David.mp4"
+                            , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Helen.mp4"
+                            ]]
 
 testTable = table $ matrix 3 3 (\(x, y) -> BS.pack $ show (x + y))
+
+
+deckA = movieFileIn (cell (int 0, mod (floori $ chopChan0 movieIndA) (int 3)) movies)
+
+deckB = movieFileIn (cell (int 0, mod (floori $ chopChan0 movieIndB) (int 3)) movies)
 
 noiset = noiseTop
          & pars . noiseTMonochrome .~ Just (B False)

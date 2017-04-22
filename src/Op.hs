@@ -25,6 +25,13 @@ data CHOP = NoiseCHOP { _noiseCTranslate :: Vec3
                       , _noiseCPeriod :: Maybe (Param Float)
                       }
           | SOPToCHOP { _sopToChopSop :: Param (Tree SOP) }
+          | Logic { _logicPreop :: Maybe (Param Int)
+                  , _logicConvert :: Maybe (Param Int)
+                  }
+          | Hold
+          | ConstantCHOP { _name0 :: Maybe (Param BS.ByteString)
+                         , _value0 :: Param Float
+                         }
 
 
 data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
@@ -105,12 +112,15 @@ instance Op CHOP where
                                                              , ("period", ShowP <$> p)
                                                              ]) $ vec3Map' "t" t
   opPars (SOPToCHOP s) = M.singleton "sop" $ ShowP s
+  opPars (Logic p c) = fromListMaybe [("preop", ShowP <$> p), ("convert", ShowP <$> c)]
+  opPars (Hold) = M.empty
+  opPars (ConstantCHOP n v) = M.union (fromListMaybe [("name0", ShowP <$> n)]) $ M.fromList [("value0", ShowP v)]
   opType (NoiseCHOP _ _ _ _ _ _) = "noiseCHOP"
   opType (SOPToCHOP _) = "sopToChop"
+  opType (Logic _ _) = "logic"
+  opType (Hold) = "hold"
+  opType (ConstantCHOP _ _) = "constantChop"
   opText _ = Nothing
-
-noiseCHOP :: Tree CHOP
-noiseCHOP = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing Nothing Nothing Nothing)
 
 chopChan :: Int -> Tree CHOP -> Param Float
 chopChan i = TreeFloat (\opstring -> BS.append opstring (BS.pack $ "[" ++ show i ++ "]")) . TreePar
@@ -124,8 +134,20 @@ chopChan0 = chopChan 0
 sampleTop :: Int -> (Int, Int) -> Tree TOP -> Param Float
 sampleTop n (x, y) = TreeFloat (\opstring -> BS.append opstring (BS.pack $ ".sample(x=" ++ show x ++ ",y=" ++ show y ++ ")[" ++ show n ++ "]")) . TreePar
 
+noiseCHOP :: Tree CHOP
+noiseCHOP = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing Nothing Nothing Nothing)
+
 sopToChop :: Tree SOP -> Tree CHOP
 sopToChop = GeneratorTree . SOPToCHOP . TreePar
+
+logic :: Tree CHOP -> Tree CHOP
+logic = EffectTree (Logic Nothing Nothing)
+
+hold :: Tree CHOP -> Tree CHOP -> Tree CHOP
+hold = CompositeTree Hold
+
+constChop :: Param Float -> Tree CHOP
+constChop = GeneratorTree . ConstantCHOP Nothing
 
 -- Tops
 
@@ -162,8 +184,11 @@ instance Op TOP where
 
   opText _ = Nothing
 
-movieFileIn :: String -> Tree TOP
-movieFileIn (BS.pack -> file) = GeneratorTree (MovieFileIn (File file))
+movieFileIn :: Param BS.ByteString -> Tree TOP
+movieFileIn f = GeneratorTree (MovieFileIn f)
+
+movieFileIn' :: String -> Tree TOP
+movieFileIn' (BS.pack -> file) = movieFileIn $ File file
 
 displace :: Tree TOP -> Tree TOP -> Tree TOP
 displace = CompositeTree Displace
@@ -279,6 +304,8 @@ table = GeneratorTree . Table
 chopExec :: Tree CHOP -> Tree DAT
 chopExec chop = GeneratorTree $ ChopExec (treePar chop) Nothing Nothing Nothing Nothing Nothing
 
+cell :: (Integral a, Integral b) => (Param a, Param b) -> Tree DAT -> Param BS.ByteString
+cell (x, y) t = Cell x y (treePar t)
 
 -- COMPs
 instance Op COMP where
