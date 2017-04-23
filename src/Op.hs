@@ -32,11 +32,17 @@ data CHOP = NoiseCHOP { _noiseCTranslate :: Vec3
           | ConstantCHOP { _name0 :: Maybe (Param BS.ByteString)
                          , _value0 :: Param Float
                          }
+          | FeedbackCHOP
+          | SelectCHOP { _selectCChop :: Param (Tree CHOP)
+                       }
 
 
 data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
            | Displace
-           | MovieFileIn { _movieFileInFile :: Param BS.ByteString }
+           | MovieFileIn { _movieFileInFile :: Param BS.ByteString
+                         , _moviePlayMode :: Maybe (Param Int)
+                         , _movieIndex :: Maybe (Param Int)
+                         }
            | OutTOP
            | NullTOP
            | Render { _renderGeo :: Param (Tree COMP)
@@ -60,6 +66,10 @@ data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
                   , _rampResolution :: Dimen
                   , _rampValues :: Param (Tree DAT)
                   }
+           | SwitchTOP { _switchTIndex :: Param Float
+                       }
+           | SelectTOP { _selectTTop :: Param (Tree TOP)
+                       }
 
 data SOP = Sphere
          | OutSOP
@@ -115,11 +125,15 @@ instance Op CHOP where
   opPars (Logic p c) = fromListMaybe [("preop", ShowP <$> p), ("convert", ShowP <$> c)]
   opPars (Hold) = M.empty
   opPars (ConstantCHOP n v) = M.union (fromListMaybe [("name0", ShowP <$> n)]) $ M.fromList [("value0", ShowP v)]
+  opPars (FeedbackCHOP) = M.empty
+  opPars (SelectCHOP c) = M.singleton "chop" (ShowP c)
   opType (NoiseCHOP _ _ _ _ _ _) = "noiseCHOP"
   opType (SOPToCHOP _) = "sopToChop"
   opType (Logic _ _) = "logic"
   opType (Hold) = "hold"
   opType (ConstantCHOP _ _) = "constantChop"
+  opType (FeedbackCHOP) = "feedbackChop"
+  opType (SelectCHOP _) = "selectChop"
   opText _ = Nothing
 
 chopChan :: Int -> Tree CHOP -> Param Float
@@ -144,10 +158,16 @@ logic :: Tree CHOP -> Tree CHOP
 logic = EffectTree (Logic Nothing Nothing)
 
 hold :: Tree CHOP -> Tree CHOP -> Tree CHOP
-hold = CompositeTree Hold
+hold = CombineTree Hold
 
 constChop :: Param Float -> Tree CHOP
 constChop = GeneratorTree . ConstantCHOP Nothing
+
+feedbackChop :: Tree CHOP -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
+feedbackChop r t = FeedbackTree FeedbackCHOP r t selectChop
+
+selectChop :: Tree CHOP -> Tree CHOP
+selectChop = GeneratorTree <$> SelectCHOP . treePar
 
 -- Tops
 
@@ -155,23 +175,26 @@ instance Op TOP where
   opPars (CHOPToTOP chop) = M.singleton (BS.pack "chop") (ShowP chop)
   opPars (CompositeTOP op) = fromListMaybe [("operand", Just $ ShowP op)]
   opPars (FeedbackTOP) = M.empty
-  opPars (MovieFileIn file) = M.singleton (BS.pack "file") file
+  opPars (MovieFileIn file mode index) = M.union (fromListMaybe [ ("playmode", ShowP <$> mode)
+                                                                , ("index", ShowP <$> index)]) $ M.singleton (BS.pack "file") file
   opPars (Render geo cam light) = fromListMaybe [ ("geometry", Just $ ShowP geo)
                                                 , ("camera", Just $ ShowP cam)
                                                 , ("lights", ShowP <$> light)]
   opPars (Transform t s) = M.union (vec2Map' "t" t) (vec2Map' "s" s)
   opPars (LevelTOP o) = fromListMaybe [("opacity", ShowP <$> o)]
   opPars (NoiseTOP m r t) = M.unions  [(fromListMaybe [("mono", ShowP <$> m)]), (dimenMap "resolution" r), vec3Map' "t" t]
+  opPars (SwitchTOP i) = M.singleton "index" (ShowP i)
   opPars CircleTOP = M.empty
   opPars Displace = M.empty
   opPars OutTOP = M.empty
   opPars NullTOP = M.empty
   opPars (Ramp t p r dat) = M.union (dimenMap "resolution" r) $ fromListMaybe [("dat", Just (ShowP $ dat)), ("type", ShowP <$> t), ("phase", ShowP <$> p)]
+  opPars (SelectTOP c) = M.singleton "top" (ShowP c)
 
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP _) = "compositeTop"
   opType (Displace) = "displace"
-  opType (MovieFileIn _) = "movieFileIn"
+  opType (MovieFileIn _ _ _) = "movieFileIn"
   opType (Render _ _ _) = "render"
   opType (Transform _ _) = "transform"
   opType CircleTOP = "circleTop"
@@ -181,17 +204,19 @@ instance Op TOP where
   opType (LevelTOP _) = "levelTop"
   opType (NoiseTOP _ _ _) = "noiseTop"
   opType (Ramp _ _ _ _) = "ramp"
+  opType (SwitchTOP _) = "switchTop"
+  opType (SelectTOP _) = "selectTop"
 
   opText _ = Nothing
 
 movieFileIn :: Param BS.ByteString -> Tree TOP
-movieFileIn f = GeneratorTree (MovieFileIn f)
+movieFileIn f = GeneratorTree (MovieFileIn f Nothing Nothing)
 
 movieFileIn' :: String -> Tree TOP
 movieFileIn' (BS.pack -> file) = movieFileIn $ File file
 
 displace :: Tree TOP -> Tree TOP -> Tree TOP
-displace = CompositeTree Displace
+displace = CombineTree Displace
 
 chopToTop :: Tree CHOP -> Tree TOP
 chopToTop = GeneratorTree . CHOPToTOP . TreePar
@@ -202,11 +227,11 @@ outTop = EffectTree OutTOP
 render :: Tree COMP -> Tree COMP -> Tree TOP
 render geo cam = GeneratorTree (Render (TreePar geo) (TreePar cam) Nothing)
 
-compTop :: Int -> Tree TOP -> Tree TOP -> Tree TOP
+compTop :: Int -> [Tree TOP] -> Tree TOP
 compTop op = CompositeTree (CompositeTOP $ int op)
 
-feedbackTop :: Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP -> Tree TOP) -> Tree TOP
-feedbackTop = FeedbackTree FeedbackTOP
+feedbackTop :: Tree TOP -> (Tree TOP -> Tree TOP) -> Tree TOP
+feedbackTop r t = FeedbackTree FeedbackTOP r t selectTop
 
 circleTop :: Tree TOP
 circleTop = GeneratorTree CircleTOP
@@ -225,6 +250,12 @@ noiseTop = GeneratorTree (NoiseTOP Nothing emptyIV2 emptyV3)
 
 ramp :: [(Float, Float, Float, Float, Float)] -> Tree TOP
 ramp = GeneratorTree . (Ramp Nothing Nothing emptyIV2) . treePar . table . fromLists . map (^..each) . ((:) ("pos", "r", "g", "b", "a")) . map ((over each) (BS.pack . show))
+
+switchTop :: Param Float -> [Tree TOP] -> Tree TOP
+switchTop i = CompositeTree (SwitchTOP i)
+
+selectTop :: Tree TOP -> Tree TOP
+selectTop = GeneratorTree <$> SelectTOP . treePar
 
 -- SOPs
 

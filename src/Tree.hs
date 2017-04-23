@@ -12,16 +12,18 @@ import Data.Map.Strict
 import Data.Maybe
 
 data Tree a where
-  GeneratorTree :: a -> Tree a
-  EffectTree :: a -> Tree a -> Tree a
-  CompositeTree :: a -> Tree a -> Tree a -> Tree a
+  GeneratorTree :: (Op a) => a -> Tree a
+  EffectTree :: (Op a) => a -> Tree a -> Tree a
+  CombineTree :: (Op a) => a -> Tree a -> Tree a -> Tree a
+  CompositeTree :: (Op a) => a -> [Tree a] -> Tree a
 
-  FeedbackTree :: a -> Tree a -> (Tree a -> Tree a) -> (Tree a -> Tree a -> Tree a) -> Tree a
+  FeedbackTree :: (Op a) => a -> Tree a -> (Tree a -> Tree a) -> (Tree a -> Tree a) -> Tree a
 
   ComponentTree :: (Op b) => a -> Tree b -> Tree a
 
 pars :: Lens' (Tree a) a
-pars f (CompositeTree t o1 o2) = fmap (\t' -> CompositeTree t' o1 o2) (f t)
+pars f (CombineTree t o1 o2) = fmap (\t' -> CombineTree t' o1 o2) (f t)
+pars f (CompositeTree t os) = fmap (\t' -> CompositeTree t' os) (f t)
 pars f (GeneratorTree a) = fmap (\a' -> GeneratorTree a') (f a)
 pars f (EffectTree a aop) = fmap (\a' -> EffectTree a' aop) (f a)
 pars f (FeedbackTree a b c d) = fmap (\a' -> FeedbackTree a' b c d) (f a)
@@ -46,7 +48,7 @@ data Param a where
   TreeFloat :: (Num n, Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param n
   TreeString :: (Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param ByteString
   ShowP :: Param a -> Param ByteString
-  Seconds :: Param Float
+  PyExpr :: (Show a) => ByteString -> Param a
   Mult :: (Num a, Show a) => Param a -> Param a -> Param a
   Add :: (Num a, Show a) => Param a -> Param a -> Param a
   Mod :: (Num a, Num b, Show a) => (ByteString -> ByteString) -> Param a -> Param b
@@ -66,7 +68,10 @@ toFloat :: (Integral a, Floating b, Show a, Show b) => Param a -> Param b
 toFloat = MakeFloat
 
 seconds :: Param Float
-seconds = Seconds
+seconds = PyExpr "absTime.seconds"
+
+frames :: Param Int
+frames = PyExpr "absTime.frame"
 
 (!*) :: (Num a, Show a) => Param a -> Param a -> Param a
 (!*) = Mult
@@ -86,8 +91,8 @@ floor = mathFunc "floor"
 floori :: (Floating a, Integral b, Show a, Show b) => Param a -> Param b
 floori = mathFunc "floor"
 
-mod :: (Num a, Show a) => Param a -> Param a -> Param a
-mod = Mod2 (\op1 op2 -> concat ["(", op1, "%", op2, ")"])
+(!%) :: (Num a, Show a) => Param a -> Param a -> Param a
+(!%) = Mod2 (\op1 op2 -> concat ["(", op1, "%", op2, ")"])
 
 mathFunc :: (Num a, Num b, Show a) => ByteString -> Param a -> Param b
 mathFunc f = Mod (\op -> concat ["math.", f, "(", op, ")"])

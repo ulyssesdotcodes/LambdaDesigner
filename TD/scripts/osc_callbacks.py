@@ -31,6 +31,8 @@ classes = {
   'transform' : (transformTOP, 'transform', 'TOP'),
   'noiseTop' : (noiseTOP, 'noise', 'TOP'),
   'ramp' : (rampTOP, 'ramp', 'TOP'),
+  'switchTop' : (switchTOP, 'switch', 'TOP'),
+  'selectTop' : (selectTOP, 'select', 'TOP'),
 
   'constantChop' : (constantCHOP, 'constant', 'CHOP'),
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
@@ -38,6 +40,7 @@ classes = {
   'logic' : (logicCHOP, 'logic', 'CHOP'),
   'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
   'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
+  'selectChop' : (selectCHOP, 'select', 'CHOP'),
 
   'chopToSop' : (choptoSOP, 'chopto', 'SOP'),
   'circleSop' : (circleSOP, 'circle', 'SOP'),

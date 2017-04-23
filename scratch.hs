@@ -23,17 +23,21 @@ invert l = logic l & pars.logicPreop .~ Just (int 1)
 movieIndA = hold secChop held
 movieIndB = hold secChop (invert held)
 
-movies = table $ fromLists [["C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Anna.mp4"
-                            , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\David.mp4"
-                            , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Helen.mp4"
-                            ]]
+moviesList = ["C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Anna.mp4"
+             , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\David.mp4"
+             , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Helen.mp4"
+             ]
+
+movies = table $ fromLists [moviesList]
 
 testTable = table $ matrix 3 3 (\(x, y) -> BS.pack $ show (x + y))
 
 
-deckA = movieFileIn (cell (int 0, mod (floori $ chopChan0 movieIndA) (int 3)) movies)
+deckA = movieFileIn <&> pars.moviePlayMode .~ Just (int 1) <&> pars.movieIndex .~ Just (frames !% int (60 * 60 * 3)) $
+  (cell (int 0, (floori $ chopChan0 movieIndA) !% int (length moviesList)) movies)
 
-deckB = movieFileIn (cell (int 0, mod (floori $ chopChan0 movieIndB) (int 3)) movies)
+deckB = movieFileIn <&> pars.moviePlayMode .~ Just (int 1) <&> pars.movieIndex .~ Just (frames !% int (60 * 60 * 3)) $
+  (cell (int 0, (floori $ chopChan0 movieIndB) !% int 3) movies)
 
 noiset = noiseTop
          & pars . noiseTMonochrome .~ Just (B False)
@@ -80,4 +84,4 @@ circgeom = geo
               chopToSop circsop (sopToChop circsop)
               & pars.chopToSopAttrScope .~ Just (S "N")
 
-finalout = outTop $ feedbackTop (render circgeom cam) (levelTop <&> pars . levelOpacity .~ Just (float 1)) (compTop 31)
+finalout = outTop $ feedbackTop (render circgeom cam) (\a -> compTop 31 [(levelTop <&> pars . levelOpacity .~ Just (float 1) $ a), render circgeom cam])

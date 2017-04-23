@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module OSC where
 
@@ -34,6 +35,7 @@ instance Ord Message where
   compare (Message _ ((ASCII_String "create"):_)) _ = LT
   compare _ (Message _ ((ASCII_String "create"):_)) = GT
   compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
+  compare (Message _ ((ASCII_String "command"):_)) _ = GT
   compare _ _ = EQ
 
 type Messages = Trie [Messagable]
@@ -41,7 +43,8 @@ type Messages = Trie [Messagable]
 parseTree :: (Monad m, Op a) => Tree a -> StateT Messages m String
 parseTree (GeneratorTree a) = op0Messages a
 parseTree (EffectTree a aop) = op1Messages a aop
-parseTree (CompositeTree top op1 op2) = op2Messages top op1 op2
+parseTree (CombineTree top op1 op2) = op2Messages top op1 op2
+parseTree (CompositeTree c ops) = opsMessages c ops
 parseTree (ComponentTree c bop) = do addr <- op0Messages c
                                      tr <- execStateT (parseTree bop) empty
                                      let modMsg ((Connect i a):ms) = (Connect i (BS.concat [BS.pack addr, a])):(modMsg ms)
@@ -50,18 +53,23 @@ parseTree (ComponentTree c bop) = do addr <- op0Messages c
                                      modify $ unionR . fromList . fmap (\(a, ms) -> (BS.concat [BS.pack addr, a], modMsg ms)) . toList $ tr
                                      return addr
 
-parseTree (FeedbackTree top input transform composite) = do messages <- get
-                                                            fbaddr <- evalStateT (op0Messages top) messages
-                                                            inaddr <- evalStateT (parseTree input) messages
-                                                            let transformTree = transform $ GeneratorTree top
-                                                                compTree = composite transformTree input
-                                                            compAddr <- parseTree compTree
-                                                            let connect = Connect 0 (BS.pack inaddr)
-                                                                par = Parameter "top" (BS.pack $ "op(\"" ++ tail compAddr ++ "\")")
-                                                            let resetMsg = Command $ Pulse "reset"
-                                                            modify $ adjust ((++) [resetMsg, connect, par]) (BS.pack fbaddr) -- Hacky but works because evalStateT is pure
-                                                            modify $ adjust ((:) connect) (BS.pack compAddr)
-                                                            return compAddr
+parseTree (FeedbackTree top reset transform sel) = do messages <- get
+                                                      fbaddr <- evalStateT (op0Messages top) messages
+                                                      resetaddr <- parseTree reset
+                                                      let transformTree = transform $ GeneratorTree top
+                                                      transformAddr <- parseTree transformTree
+                                                      seladdr <- parseTree $ sel transformTree
+                                                      let feedbackTopType = opType FeedbackTOP
+                                                          feedbackChopType = opType FeedbackCHOP
+                                                      if | opType top == opType FeedbackTOP -> do let par = Parameter "top" (BS.pack $ "op(\"" ++ tail seladdr ++ "\")")
+                                                                                                      connect = Connect 0 (BS.pack resetaddr)
+                                                                                                  modify $ adjust ((++) [par, connect]) (BS.pack fbaddr)
+                                                         | opType top == opType FeedbackCHOP -> do let connectsel = Connect 0 (BS.pack seladdr)
+                                                                                                       connectreset = Connect 1 (BS.pack resetaddr)
+                                                                                                   modify $ adjust ((++) [connectsel, connectreset]) (BS.pack fbaddr)
+                                                      let resetMsg = Command $ Pulse "reset"
+                                                      modify $ adjust ((:) resetMsg) (BS.pack fbaddr) -- Hacky but works because evalStateT is pure
+                                                      return transformAddr
 
 parseParam :: (Monad m) => Param a -> StateT Messages m BS.ByteString
 parseParam (File val) = do return val
@@ -75,7 +83,7 @@ parseParam (I i) = pure $ BS.pack $ show i
 parseParam (S s) = pure $ BS.pack $ "\"" ++ s ++ "\""
 parseParam (B b) = pure $ BS.pack $ if b then show 1 else show 0
 parseParam (MakeFloat i) = parseParam i
-parseParam Seconds = pure $ "absTime.seconds"
+parseParam (PyExpr s) = pure s
 parseParam (Mult a b) = makeExpr a b "*"
 parseParam (Add a b) = makeExpr a b "+"
 parseParam (Mod f a) = parseParam a >>= \s -> return $ f s
@@ -93,35 +101,34 @@ makeExpr a b op = do abs <- parseParam a
                      return $ BS.concat ["(", abs," " ,op ," " , bbs, ")"]
 
 op0Messages :: (Monad m, Op a) => a -> StateT Messages m String
-op0Messages a = do messages <- get
-                   let ty = opType a
-                   let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
-                   let addr = "/" ++ (BS.unpack . BS.append ty $ findEmpty nodesOfType)
-                   let createMessage = Create ty
-                   let textMessage =
-                         case opText a of
-                           Just content -> [TextContent content]
-                           Nothing -> []
-                   modify $ insert (BS.pack addr) (createMessage:textMessage)
-                   sequence_ $ M.foldrWithKey (\k p parstates -> (do val <- parseParam p
-                                                                     let msg = Parameter k val
-                                                                     modify $ adjust ((:) msg) (BS.pack addr)
-                                                                     return ()):parstates) [] (opPars a)
-                   removeDuplicates addr ty
+op0Messages a = opsMessages a []
 
 op1Messages :: (Monad m, Op a) => a -> Tree a -> StateT Messages m String
-op1Messages a op1 = do addr1 <- parseTree op1
-                       addr <- op0Messages a
-                       let connect = Connect 0 (BS.pack addr1)
-                       modify $ adjust ((:) connect) (BS.pack addr)
-                       removeDuplicates addr (opType a)
+op1Messages a op1 = opsMessages a [op1]
 
 op2Messages :: (Monad m, Op a) => a -> Tree a -> Tree a -> StateT Messages m String
-op2Messages a op1 op2 = do addr <- op1Messages a op1
-                           addr2 <- parseTree op2
-                           let connect2 = Connect 1 (BS.pack addr2)
-                           modify $ adjust ((:) connect2) (BS.pack addr)
-                           return addr
+op2Messages a op1 op2 = opsMessages a [op1, op2]
+
+opsMessages :: (Monad m, Op a) => a -> [Tree a] -> StateT Messages m String
+opsMessages a ops = do let ty = opType a
+                       messages <- get
+                       let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
+                       let addr = "/" ++ (BS.unpack . BS.append ty $ findEmpty nodesOfType)
+                       let createMessage = Create ty
+                       let textMessage =
+                             case opText a of
+                               Just content -> [TextContent content]
+                               Nothing -> []
+                       modify $ insert (BS.pack addr) (createMessage:textMessage)
+                       sequence_ $ M.foldrWithKey (\k p parstates -> (do val <- parseParam p
+                                                                         let msg = Parameter k val
+                                                                         modify $ adjust ((:) msg) (BS.pack addr)
+                                                                         return ()):parstates) [] (opPars a)
+                       sequence_ . map (\(i, op) -> do a <- parseTree op
+                                                       let connect = Connect i (BS.pack a)
+                                                       modify $ adjust ((:) connect) (BS.pack addr)
+                                                       return a) . zip [0..] $ ops
+                       removeDuplicates addr (opType a)
 
 removeDuplicates :: (Monad m) => String -> BS.ByteString -> StateT Messages m String
 removeDuplicates addr ty = do messages <- get
