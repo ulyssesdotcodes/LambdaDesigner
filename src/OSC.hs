@@ -20,8 +20,6 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 
-data CommandType = Pulse BS.ByteString deriving Eq
-
 data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
                 | Parameter BS.ByteString BS.ByteString
@@ -125,7 +123,8 @@ opsMessages a ops = do let ty = opType a
                              case opText a of
                                Just content -> [TextContent content]
                                Nothing -> []
-                       modify $ insert addr (createMessage:textMessage)
+                       let commandMessages = map Command $ opCommands a
+                       modify $ insert addr (createMessage:textMessage ++ commandMessages)
                        sequence_ $ M.foldrWithKey (\k p parstates -> (do val <- parseParam p
                                                                          let msg = Parameter k val
                                                                          modify $ adjust ((:) msg) addr

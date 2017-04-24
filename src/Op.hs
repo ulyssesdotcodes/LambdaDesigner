@@ -36,6 +36,9 @@ data CHOP = NoiseCHOP { _noiseCTranslate :: Vec3
           | SelectCHOP { _selectCChop :: Param (Tree CHOP)
                        }
           | Count { _countThresh :: Maybe (Param Float)
+                  , _countLimType :: Maybe (Param Int)
+                  , _countLimMin :: Maybe (Param Float)
+                  , _countLimMax :: Maybe (Param Float)
                   }
           | MergeCHOP
           | Fan { _fanOp :: Maybe (Param Int)
@@ -135,7 +138,7 @@ instance Op CHOP where
   opPars (ConstantCHOP n v) = M.union (fromListMaybe [("name0", ShowP <$> n)]) $ M.fromList [("value0", ShowP v)]
   opPars (FeedbackCHOP) = M.empty
   opPars (SelectCHOP c) = M.singleton "chop" (ShowP c)
-  opPars (Count t) = fromListMaybe [("threshup", (ShowP <$> t))]
+  opPars (Count t l min max) = fromListMaybe [("threshup", (ShowP <$> t)), ("output", ShowP <$> l), ("limitmin", ShowP <$> min), ("limitmax", ShowP <$> max)]
   opPars (Fan o n) = fromListMaybe [("fanop", (ShowP <$> o)), ("alloff", ShowP <$> n)]
   opPars (MergeCHOP) = M.empty
   opPars (Math a) = fromListMaybe [("preoff", ShowP <$> a)]
@@ -146,19 +149,21 @@ instance Op CHOP where
   opType (ConstantCHOP _ _) = "constantChop"
   opType (FeedbackCHOP) = "feedbackChop"
   opType (SelectCHOP _) = "selectChop"
-  opType (Count _) = "count"
+  opType (Count _ _ _ _) = "count"
   opType (Fan _ _) = "fan"
   opType (MergeCHOP) = "mergeChop"
   opType (Math _) = "math"
   opText _ = Nothing
+  opCommands (Count _ _ _ _) = [Pulse "reset"]
+  opCommands _ = []
 
-chopChan :: Int -> Tree CHOP -> Param Float
+chopChan :: (Num n) => Int -> Tree CHOP -> Param n
 chopChan i = TreeFloat (\opstring -> BS.append opstring (BS.pack $ "[" ++ show i ++ "]")) . TreePar
 
-chopChanName :: String -> Tree CHOP -> Param Float
+chopChanName :: (Num n) => String -> Tree CHOP -> Param n
 chopChanName n = TreeFloat (\opstring -> BS.append opstring (BS.pack $ "[\'" ++ n ++ "\']")) . TreePar
 
-chopChan0 :: Tree CHOP -> Param Float
+chopChan0 :: (Num n) => Tree CHOP -> Param n
 chopChan0 = chopChan 0
 
 sampleTop :: Int -> (Int, Int) -> Tree TOP -> Param Float
@@ -186,10 +191,10 @@ selectChop :: Tree CHOP -> Tree CHOP
 selectChop = GeneratorTree <$> SelectCHOP . treePar
 
 count :: Tree CHOP -> Tree CHOP
-count = EffectTree (Count Nothing)
+count = EffectTree (Count Nothing Nothing Nothing Nothing)
 
 countReset :: Tree CHOP -> Tree CHOP -> Tree CHOP
-countReset = CombineTree (Count Nothing)
+countReset = CombineTree (Count Nothing Nothing Nothing Nothing)
 
 fan :: Tree CHOP -> Tree CHOP
 fan = EffectTree (Fan Nothing Nothing)
@@ -242,6 +247,7 @@ instance Op TOP where
   opType (SelectTOP _) = "selectTop"
 
   opText _ = Nothing
+  opCommands _ = []
 
 movieFileIn :: Param BS.ByteString -> Tree TOP
 movieFileIn f = GeneratorTree (MovieFileIn f Nothing Nothing)
@@ -310,6 +316,7 @@ instance Op SOP where
   opType (CHOPToSOP _ _) = "chopToSop"
 
   opText _ = Nothing
+  opCommands _ = []
 
 circleSop :: Tree SOP
 circleSop = GeneratorTree $ CircleSOP Nothing Nothing
@@ -359,6 +366,7 @@ instance Op DAT where
                   ]
     where
       concatFunc (name, body) = BS.append (makeChopExecFunc name) body
+  opCommands _ = []
 
 makeChopExecFunc :: BS.ByteString -> BS.ByteString
 makeChopExecFunc prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev): \n"]
@@ -372,6 +380,12 @@ chopExec chop = GeneratorTree $ ChopExec (treePar chop) Nothing Nothing Nothing 
 cell :: (Integral a, Integral b) => (Param a, Param b) -> Tree DAT -> Param BS.ByteString
 cell (x, y) t = Cell x y (treePar t)
 
+cellf :: (Integral a, Integral b, Floating f, Show f) => (Param a, Param b) -> Tree DAT -> Param f
+cellf (x, y) t = Cell x y (treePar t)
+
+casti :: (Show f, Floating f, Integral i) => Param f -> Param i
+casti = Mod (\f -> BS.concat ["int(", f, ")"])
+
 -- COMPs
 instance Op COMP where
   opType (Geo _ _ _ _) = "geo"
@@ -381,6 +395,7 @@ instance Op COMP where
   opPars (Camera t) = vec3Map' "t" t
   opPars Light = M.empty
   opText _ = Nothing
+  opCommands _ = []
 
 geo :: Tree SOP -> Tree COMP
 geo = ComponentTree (Geo emptyV3 emptyV3 Nothing Nothing)

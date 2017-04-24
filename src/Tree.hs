@@ -32,10 +32,13 @@ pars f (FeedbackTree a b c d) = fmap (\a' -> FeedbackTree a' b c d) (f a)
 pars f (ComponentTree a aop) = fmap (\a' -> ComponentTree a' aop) (f a)
 pars f (FixedTree _ aop) = pars f aop
 
+data CommandType = Pulse ByteString deriving Eq
+
 class Op a where
   opType :: a -> ByteString
   opPars :: a -> Map ByteString (Param ByteString)
   opText :: a -> Maybe ByteString
+  opCommands :: a -> [CommandType]
 
 treePar :: (Op a) => Tree a -> Param (Tree a)
 treePar = TreePar
@@ -56,7 +59,7 @@ data Param a where
   Add :: (Num a, Show a) => Param a -> Param a -> Param a
   Mod :: (Num a, Num b, Show a) => (ByteString -> ByteString) -> Param a -> Param b
   Mod2 :: (Num a, Num b, Num c, Show a, Show b, Show c) => (ByteString -> ByteString -> ByteString) -> Param a -> Param b -> Param c
-  Cell :: (Integral a, Integral b, Op c) => Param a -> Param b -> Param (Tree c) -> Param ByteString
+  Cell :: (Integral a, Integral b, Op c, Show d) => Param a -> Param b -> Param (Tree c) -> Param d
 
 file :: ByteString -> Param ByteString
 file = File
@@ -72,6 +75,9 @@ ptrue = B True
 
 pfalse :: Param Bool
 pfalse = B False
+
+pmax :: (Num n, Show n) => n -> Param n -> Param n
+pmax n = Mod (\num -> concat ["max(", pack . show $ n, ",", num, ")"])
 
 toFloat :: (Integral a, Floating b, Show a, Show b) => Param a -> Param b
 toFloat = MakeFloat
