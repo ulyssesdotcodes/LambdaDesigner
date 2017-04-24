@@ -35,6 +35,14 @@ data CHOP = NoiseCHOP { _noiseCTranslate :: Vec3
           | FeedbackCHOP
           | SelectCHOP { _selectCChop :: Param (Tree CHOP)
                        }
+          | Count { _countThresh :: Maybe (Param Float)
+                  }
+          | MergeCHOP
+          | Fan { _fanOp :: Maybe (Param Int)
+                , _fanOffNeg :: Maybe (Param Bool)
+                }
+          | Math { _mathAdd :: Maybe (Param Float)
+                 }
 
 
 data TOP = CHOPToTOP { _chopToTopChop :: Param (Tree CHOP) }
@@ -127,6 +135,10 @@ instance Op CHOP where
   opPars (ConstantCHOP n v) = M.union (fromListMaybe [("name0", ShowP <$> n)]) $ M.fromList [("value0", ShowP v)]
   opPars (FeedbackCHOP) = M.empty
   opPars (SelectCHOP c) = M.singleton "chop" (ShowP c)
+  opPars (Count t) = fromListMaybe [("threshup", (ShowP <$> t))]
+  opPars (Fan o n) = fromListMaybe [("fanop", (ShowP <$> o)), ("alloff", ShowP <$> n)]
+  opPars (MergeCHOP) = M.empty
+  opPars (Math a) = fromListMaybe [("preoff", ShowP <$> a)]
   opType (NoiseCHOP _ _ _ _ _ _) = "noiseCHOP"
   opType (SOPToCHOP _) = "sopToChop"
   opType (Logic _ _) = "logic"
@@ -134,6 +146,10 @@ instance Op CHOP where
   opType (ConstantCHOP _ _) = "constantChop"
   opType (FeedbackCHOP) = "feedbackChop"
   opType (SelectCHOP _) = "selectChop"
+  opType (Count _) = "count"
+  opType (Fan _ _) = "fan"
+  opType (MergeCHOP) = "mergeChop"
+  opType (Math _) = "math"
   opText _ = Nothing
 
 chopChan :: Int -> Tree CHOP -> Param Float
@@ -148,8 +164,8 @@ chopChan0 = chopChan 0
 sampleTop :: Int -> (Int, Int) -> Tree TOP -> Param Float
 sampleTop n (x, y) = TreeFloat (\opstring -> BS.append opstring (BS.pack $ ".sample(x=" ++ show x ++ ",y=" ++ show y ++ ")[" ++ show n ++ "]")) . TreePar
 
-noiseCHOP :: Tree CHOP
-noiseCHOP = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing Nothing Nothing Nothing)
+noiseChop :: Tree CHOP
+noiseChop = GeneratorTree (NoiseCHOP emptyV3 Nothing Nothing Nothing Nothing Nothing)
 
 sopToChop :: Tree SOP -> Tree CHOP
 sopToChop = GeneratorTree . SOPToCHOP . TreePar
@@ -163,11 +179,29 @@ hold = CombineTree Hold
 constChop :: Param Float -> Tree CHOP
 constChop = GeneratorTree . ConstantCHOP Nothing
 
-feedbackChop :: Tree CHOP -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
-feedbackChop r t = FeedbackTree FeedbackCHOP r t selectChop
+feedbackChop :: Tree CHOP -> (Tree CHOP -> Tree CHOP) -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
+feedbackChop r t = FeedbackTree FeedbackCHOP r t
 
 selectChop :: Tree CHOP -> Tree CHOP
 selectChop = GeneratorTree <$> SelectCHOP . treePar
+
+count :: Tree CHOP -> Tree CHOP
+count = EffectTree (Count Nothing)
+
+countReset :: Tree CHOP -> Tree CHOP -> Tree CHOP
+countReset = CombineTree (Count Nothing)
+
+fan :: Tree CHOP -> Tree CHOP
+fan = EffectTree (Fan Nothing Nothing)
+
+mergeChop :: [Tree CHOP] -> Tree CHOP
+mergeChop = CompositeTree MergeCHOP
+
+math :: Tree CHOP -> Tree CHOP
+math = EffectTree (Math Nothing)
+
+opadd :: Float -> Tree CHOP -> Tree CHOP
+opadd a = math <&> pars.mathAdd.~Just (float a)
 
 -- Tops
 
@@ -356,3 +390,8 @@ cam = GeneratorTree (Camera emptyV3)
 
 light :: Tree COMP
 light = GeneratorTree Light
+
+-- Misc
+
+fix :: (Op a) => BS.ByteString -> Tree a -> Tree a
+fix = FixedTree

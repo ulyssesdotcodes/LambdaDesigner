@@ -41,6 +41,10 @@ classes = {
   'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
   'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
   'selectChop' : (selectCHOP, 'select', 'CHOP'),
+  'count' : (countCHOP, 'count', 'CHOP'),
+  'fan' : (fanCHOP, 'fan', 'CHOP'),
+  'mergeChop' : (mergeCHOP, 'merge', 'CHOP'),
+  'math' : (mathCHOP, 'math', 'CHOP'),
 
   'chopToSop' : (choptoSOP, 'chopto', 'SOP'),
   'circleSop' : (circleSOP, 'circle', 'SOP'),

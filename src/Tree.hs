@@ -19,7 +19,9 @@ data Tree a where
 
   FeedbackTree :: (Op a) => a -> Tree a -> (Tree a -> Tree a) -> (Tree a -> Tree a) -> Tree a
 
-  ComponentTree :: (Op b) => a -> Tree b -> Tree a
+  ComponentTree :: (Op a, Op b) => a -> Tree b -> Tree a
+
+  FixedTree :: (Op a) => ByteString -> Tree a -> Tree a
 
 pars :: Lens' (Tree a) a
 pars f (CombineTree t o1 o2) = fmap (\t' -> CombineTree t' o1 o2) (f t)
@@ -28,6 +30,7 @@ pars f (GeneratorTree a) = fmap (\a' -> GeneratorTree a') (f a)
 pars f (EffectTree a aop) = fmap (\a' -> EffectTree a' aop) (f a)
 pars f (FeedbackTree a b c d) = fmap (\a' -> FeedbackTree a' b c d) (f a)
 pars f (ComponentTree a aop) = fmap (\a' -> ComponentTree a' aop) (f a)
+pars f (FixedTree _ aop) = pars f aop
 
 class Op a where
   opType :: a -> ByteString
@@ -63,6 +66,12 @@ float = F
 
 int :: (Integral i, Show i) => i -> Param i
 int = I
+
+ptrue :: Param Bool
+ptrue = B True
+
+pfalse :: Param Bool
+pfalse = B False
 
 toFloat :: (Integral a, Floating b, Show a, Show b) => Param a -> Param b
 toFloat = MakeFloat

@@ -16,12 +16,11 @@ import qualified Data.ByteString.Char8 as BS
 
 secChop = constChop (floor seconds)
 
-held = logic secChop & pars.logicPreop .~ Just (int 2) & pars.logicConvert .~ Just (int 3)
 
 invert l = logic l & pars.logicPreop .~ Just (int 1)
 
-movieIndA = hold secChop held
-movieIndB = hold secChop (invert held)
+movieIndA = hold movieInd held
+movieIndB = hold movieInd (invert held)
 
 moviesList = ["C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Anna.mp4"
              , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\David.mp4"
@@ -44,7 +43,7 @@ noiset = noiseTop
          & pars.noiseTResolution .~ (Just (int 1), Just (int 1))
          & pars.noiseTTranslate._3 .~ Just (float 0.2 !* seconds)
 
-xynoise = noiseCHOP
+xynoise = noiseChop
           & pars . noiseCChannel .~ Just (S "t[xy]")
           & pars . noiseCTimeSlice .~ Just (B True)
           & pars . noiseCPeriod .~ Just (float 20)
@@ -70,7 +69,7 @@ limitVal =
   \  return "
 
 testchopexec =
-  chopExec (noiseCHOP)
+  chopExec (noiseChop)
   & pars . ceValueChange .~ Just limitVal
   & pars . ceOffToOn .~ Just limitVal
 
@@ -85,3 +84,19 @@ circgeom = geo
               & pars.chopToSopAttrScope .~ Just (S "N")
 
 finalout = outTop $ feedbackTop (render circgeom cam) (\a -> compTop 31 [(levelTop <&> pars . levelOpacity .~ Just (float 1) $ a), render circgeom cam])
+
+noiseCount s = (countReset
+               <&> (<&> pars.countThresh .~ Just (float 0.5)))
+               (noiseChop & pars.noiseCTimeSlice .~ Just (B True) & pars.noiseCTranslate._1 .~ Just (float s))
+
+noiseTrigger r s = countReset (noiseCount s r) r & pars.countThresh .~ Just (float 4)
+
+mergedTriggers r = fix "triggers" $ fan <&> pars.fanOp .~ (Just $ int 1) <&> pars.fanOffNeg .~ Just ptrue $ mergeChop $ map (noiseTrigger r) [0, 2, 4]
+
+trigfb = feedbackChop (constChop $ float 0) mergedTriggers (opadd 1 . selectChop)
+
+movieInd = hold trigfb trigfb & pars.logicPreop .~ Just (int 2) & pars.logicConvert .~ Just (int 3)
+
+held = logic movieInd & pars.logicPreop .~ Just (int 2) & pars.logicConvert .~ Just (int 3)
+
+
