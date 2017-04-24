@@ -12,6 +12,7 @@ import Tree
 
 import Control.Monad.Trans.State.Lazy
 import Control.Lens
+import Data.Maybe
 import Data.Trie
 import Sound.OSC
 import Sound.OSC.Transport.FD as T
@@ -52,12 +53,15 @@ parseTree (ComponentTree c bop) = do addr <- op0Messages c
                                      modify $ unionR . fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . toList $ tr
                                      return addr
 parseTree (FixedTree name op) = do messages <- get
-                                   case lookup name messages of
-                                     Just [Fixed addr] -> return addr
+                                   let name'  = (BS.append "/" name)
+                                   case member name' messages of
+                                     True -> return name'
 
-                                     Nothing -> do addr <- parseTree op
-                                                   modify $ insert name [Fixed addr]
-                                                   return addr
+                                     False -> do addr <- parseTree op
+                                                 messages' <- get
+                                                 modify $ insert name' . fromJust $ lookup addr messages'
+                                                 modify $ delete addr
+                                                 return name'
 
 parseTree (FeedbackTree top reset transform sel) = do messages <- get
                                                       fbaddr <- evalStateT (op0Messages top) messages

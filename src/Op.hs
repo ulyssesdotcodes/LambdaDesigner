@@ -96,7 +96,7 @@ data MAT = ConstantMAT { _constColor :: RGB
                        , _constAlpha :: Maybe (Param Float)
                        }
 
-data DAT = Table { _text :: Matrix BS.ByteString
+data DAT = Table { _tableText :: Matrix BS.ByteString
                  }
          | ChopExec { _chopExecChop :: Param (Tree CHOP)
                     , _ceOffToOn :: Maybe BS.ByteString
@@ -105,6 +105,9 @@ data DAT = Table { _text :: Matrix BS.ByteString
                     , _ceWhileOff :: Maybe BS.ByteString
                     , _ceValueChange :: Maybe BS.ByteString
                     }
+         | TextDAT { _text :: Maybe BS.ByteString
+                   , _textFile :: Maybe (Param BS.ByteString)
+                   }
 
 data COMP = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
@@ -339,6 +342,7 @@ instance Op MAT where
   opPars (ConstantMAT rgb alpha) = M.union (fromListMaybe [("alpha", ShowP <$> alpha)]) $ rgbMap "color" rgb
   opType (ConstantMAT _ _) = "constMat"
   opText _ = Nothing
+  opCommands _ = []
 
 constantMat :: Tree MAT
 constantMat = GeneratorTree (ConstantMAT emptyV3 Nothing)
@@ -353,8 +357,10 @@ instance Op DAT where
                                                                , ("whileoff", ShowP . B $ isJust woff)
                                                                , ("valuechange", ShowP . B $ isJust vc)
                                                                ]
-  opType (Table _) = "table"
+  opPars (TextDAT _ f) = fromListMaybe [("file", f)]
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
+  opType (TextDAT _ _) = "textDat"
+  opType (Table _) = "table"
   opText (Table t) = Just . BS.intercalate ("\n") . map (BS.intercalate ("\t")) . toLists $ t
   opText (ChopExec _ offon won onoff woff vc) =
     Just . BS.intercalate "\n\n" . (traverse %~ concatFunc)
@@ -366,6 +372,8 @@ instance Op DAT where
                   ]
     where
       concatFunc (name, body) = BS.append (makeChopExecFunc name) body
+  opText (TextDAT t _) = t
+  opCommands (TextDAT _ (isJust -> True)) = [Pulse "loadonstartpulse"]
   opCommands _ = []
 
 makeChopExecFunc :: BS.ByteString -> BS.ByteString
@@ -385,6 +393,12 @@ cellf (x, y) t = Cell x y (treePar t)
 
 casti :: (Show f, Floating f, Integral i) => Param f -> Param i
 casti = Mod (\f -> BS.concat ["int(", f, ")"])
+
+textDat :: String -> Tree DAT
+textDat t = GeneratorTree (TextDAT (Just $ BS.pack t) Nothing)
+
+fileDat :: String -> Tree DAT
+fileDat f = GeneratorTree (TextDAT Nothing (Just . File $ BS.pack ("\"" ++ f ++ "\"")))
 
 -- COMPs
 instance Op COMP where
