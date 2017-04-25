@@ -59,7 +59,7 @@ parseTree (FixedTree name op) = do messages <- get
 
                                      False -> do addr <- parseTree op
                                                  messages' <- get
-                                                 modify $ insert name' . fromJust $ lookup addr messages'
+                                                 modify $ insert name' . ((:) (Fixed name)) . fromJust $ lookup addr messages'
                                                  modify $ delete addr
                                                  return name'
 

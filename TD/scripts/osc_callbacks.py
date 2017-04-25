@@ -57,6 +57,7 @@ classes = {
   'chopExec' : (chopexecuteDAT, 'chopexecute', 'DAT'),
   'table' : (tableDAT, 'table', 'DAT'),
   'textDat' : (textDAT, 'text', 'DAT'),
+  'tcpip' : (tcpipDAT, 'tcpip', 'DAT'),
 
   'camera' : (cameraCOMP, 'cam', 'COMP'),
   'geo' : (geometryCOMP, 'geo', 'COMP'),

@@ -45,6 +45,7 @@ data CHOP = NoiseCHOP { _noiseCTranslate :: Vec3
                 , _fanOffNeg :: Maybe (Param Bool)
                 }
           | Math { _mathAdd :: Maybe (Param Float)
+                 , _mathCombChops :: Maybe (Param Int)
                  }
 
 
@@ -108,6 +109,10 @@ data DAT = Table { _tableText :: Matrix BS.ByteString
          | TextDAT { _text :: Maybe BS.ByteString
                    , _textFile :: Maybe (Param BS.ByteString)
                    }
+         | TCPIPDAT { _tcpipMode :: Maybe (Param Int)
+                    , _tcpipCallbacks :: Param (Tree DAT)
+                    , _tcpipCallbackFormat :: Maybe (Param Int)
+                    }
 
 data COMP = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
@@ -144,7 +149,7 @@ instance Op CHOP where
   opPars (Count t l min max) = fromListMaybe [("threshup", (ShowP <$> t)), ("output", ShowP <$> l), ("limitmin", ShowP <$> min), ("limitmax", ShowP <$> max)]
   opPars (Fan o n) = fromListMaybe [("fanop", (ShowP <$> o)), ("alloff", ShowP <$> n)]
   opPars (MergeCHOP) = M.empty
-  opPars (Math a) = fromListMaybe [("preoff", ShowP <$> a)]
+  opPars (Math a c) = fromListMaybe [("preoff", ShowP <$> a), ("chopop", ShowP <$> c)]
   opType (NoiseCHOP _ _ _ _ _ _) = "noiseCHOP"
   opType (SOPToCHOP _) = "sopToChop"
   opType (Logic _ _) = "logic"
@@ -155,7 +160,7 @@ instance Op CHOP where
   opType (Count _ _ _ _) = "count"
   opType (Fan _ _) = "fan"
   opType (MergeCHOP) = "mergeChop"
-  opType (Math _) = "math"
+  opType (Math _ _) = "math"
   opText _ = Nothing
   opCommands (Count _ _ _ _) = [Pulse "reset"]
   opCommands _ = []
@@ -205,11 +210,14 @@ fan = EffectTree (Fan Nothing Nothing)
 mergeChop :: [Tree CHOP] -> Tree CHOP
 mergeChop = CompositeTree MergeCHOP
 
-math :: Tree CHOP -> Tree CHOP
-math = EffectTree (Math Nothing)
+math :: [Tree CHOP] -> Tree CHOP
+math = CompositeTree (Math Nothing Nothing)
 
-opadd :: Float -> Tree CHOP -> Tree CHOP
-opadd a = math <&> pars.mathAdd.~Just (float a)
+opsadd :: [Tree CHOP] -> Tree CHOP
+opsadd = math <&> pars.mathCombChops .~ Just (int 1)
+
+opaddf :: Float -> Tree CHOP -> Tree CHOP
+opaddf a = (math <&> pars.mathAdd.~Just (float a)) . (:[])
 
 -- Tops
 
@@ -358,9 +366,11 @@ instance Op DAT where
                                                                , ("valuechange", ShowP . B $ isJust vc)
                                                                ]
   opPars (TextDAT _ f) = fromListMaybe [("file", f)]
+  opPars (TCPIPDAT m d f) = M.union (fromListMaybe [("mode", ShowP <$> m), ("format", ShowP <$> f)]) $ M.singleton "callbacks" (ShowP d)
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opType (TextDAT _ _) = "textDat"
   opType (Table _) = "table"
+  opType (TCPIPDAT _ _ _) = "tcpip"
   opText (Table t) = Just . BS.intercalate ("\n") . map (BS.intercalate ("\t")) . toLists $ t
   opText (ChopExec _ offon won onoff woff vc) =
     Just . BS.intercalate "\n\n" . (traverse %~ concatFunc)
@@ -373,6 +383,7 @@ instance Op DAT where
     where
       concatFunc (name, body) = BS.append (makeChopExecFunc name) body
   opText (TextDAT t _) = t
+  opText _ = Nothing
   opCommands (TextDAT _ (isJust -> True)) = [Pulse "loadonstartpulse"]
   opCommands _ = []
 
@@ -399,6 +410,9 @@ textDat t = GeneratorTree (TextDAT (Just $ BS.pack t) Nothing)
 
 fileDat :: String -> Tree DAT
 fileDat f = GeneratorTree (TextDAT Nothing (Just . File $ BS.pack ("\"" ++ f ++ "\"")))
+
+tcpipDat :: Tree DAT -> Tree DAT
+tcpipDat d = GeneratorTree (TCPIPDAT Nothing (treePar d) Nothing)
 
 -- COMPs
 instance Op COMP where
