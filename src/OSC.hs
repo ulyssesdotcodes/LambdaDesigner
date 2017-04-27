@@ -21,14 +21,6 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
 
-data Messagable = Create BS.ByteString
-                | Connect Int BS.ByteString
-                | Parameter BS.ByteString BS.ByteString
-                | TextContent BS.ByteString
-                | Command CommandType
-                | Fixed BS.ByteString
-                deriving Eq
-
 
 instance Ord Message where
   compare (Message (length . filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (length . filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
@@ -38,70 +30,6 @@ instance Ord Message where
   compare (Message _ ((ASCII_String "command"):_)) _ = GT
   compare _ _ = EQ
 
-type Messages = Trie [Messagable]
-
-parseTree :: (Monad m, Op a) => Tree a -> StateT Messages m BS.ByteString
-parseTree (GeneratorTree a) = op0Messages a
-parseTree (EffectTree a aop) = op1Messages a aop
-parseTree (CombineTree top op1 op2) = op2Messages top op1 op2
-parseTree (CompositeTree c ops) = opsMessages c ops
-parseTree (ComponentTree c bop) = do addr <- op0Messages c
-                                     tr <- execStateT (parseTree bop) empty
-                                     let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
-                                         modMsg (m:ms) = m:(modMsg ms)
-                                         modMsg [] = []
-                                     modify $ unionR . fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . toList $ tr
-                                     return addr
-parseTree (FixedTree name op) = do messages <- get
-                                   let name'  = (BS.append "/" name)
-                                   case member name' messages of
-                                     True -> return name'
-
-                                     False -> do addr <- parseTree op
-                                                 messages' <- get
-                                                 modify $ insert name' . ((:) (Fixed name)) . fromJust $ lookup addr messages'
-                                                 modify $ delete addr
-                                                 return name'
-
-parseTree (FeedbackTree top reset transform sel) = do messages <- get
-                                                      fbaddr <- evalStateT (op0Messages top) messages
-                                                      resetaddr <- parseTree reset
-                                                      let transformTree = transform $ GeneratorTree top
-                                                      transformAddr <- evalStateT (parseTree transformTree) messages
-                                                      seladdr <- parseTree $ sel transformTree
-                                                      if | opType top == opType FeedbackTOP -> do let par = Parameter "top" (BS.concat ["op(\"", BS.tail seladdr, "\")"])
-                                                                                                      connect = Connect 0 (resetaddr)
-                                                                                                  modify $ adjust ((++) [par, connect]) (fbaddr)
-                                                         | opType top == opType FeedbackCHOP -> do let connectsel = Connect 0 (seladdr)
-                                                                                                       connectreset = Connect 1 (resetaddr)
-                                                                                                   modify $ adjust ((++) [connectsel, connectreset]) (fbaddr)
-                                                      let resetMsg = Command $ Pulse "reset"
-                                                      modify $ adjust ((:) resetMsg) (fbaddr) -- Hacky but works because evalStateT is pure
-                                                      return transformAddr
-
-parseParam :: (Monad m) => Param a -> StateT Messages m BS.ByteString
-parseParam (File val) = do return val
-parseParam (TreeFloat mod a) = do opstring <- parseParam a
-                                  return $ mod opstring
-parseParam (TreeString mod a) = do opstring <- parseParam a
-                                   return $ mod opstring
-parseParam (ShowP f) = parseParam f
-parseParam (F f) = pure $ BS.pack $ show f
-parseParam (I i) = pure $ BS.pack $ show i
-parseParam (S s) = pure $ BS.pack $ "\"" ++ s ++ "\""
-parseParam (B b) = pure $ BS.pack $ if b then show 1 else show 0
-parseParam (MakeFloat i) = parseParam i
-parseParam (PyExpr s) = pure s
-parseParam (Mult a b) = makeExpr a b "*"
-parseParam (Add a b) = makeExpr a b "+"
-parseParam (Mod f a) = parseParam a >>= \s -> return $ f s
-parseParam (Mod2 f a b) = parseParam a >>= \s -> parseParam b >>= \t -> return $ f s t
-parseParam (Cell a b t) = do ta <- parseParam t
-                             aa <- parseParam a
-                             ab <- parseParam b
-                             return $ BS.concat [ta, "[", aa, ",", ab, "]"]
-parseParam (TreePar tree) = do paddr <- parseTree tree
-                               return $ BS.concat ["op(\"", BS.tail paddr, "\")"]
 
 makeExpr :: (Monad m, Num f) => Param f -> Param f -> BS.ByteString -> StateT Messages m BS.ByteString
 makeExpr a b op = do abs <- parseParam a

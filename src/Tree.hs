@@ -4,158 +4,128 @@
 
 module Tree where
 
-import Prelude hiding (sin, concat, floor)
+import Prelude hiding (sin, concat)
 
-import Control.Lens
+import Control.Applicative
 import Data.ByteString.Char8
 import Data.Map.Strict
 import Data.Maybe
 
-data Tree a where
-  GeneratorTree :: (Op a) => a -> Tree a
-  EffectTree :: (Op a) => a -> Tree a -> Tree a
-  CombineTree :: (Op a) => a -> Tree a -> Tree a -> Tree a
-  CompositeTree :: (Op a) => a -> [Tree a] -> Tree a
+data TDFloat
+data TDInt
+data TDString
+class TDNum a
+instance TDNum TDFloat
+instance TDNum TDInt
 
-  FeedbackTree :: (Op a) => a -> Tree a -> (Tree a -> Tree a) -> (Tree a -> Tree a) -> Tree a
+data TDType a where
+  Empty :: TDType a
+  F :: (Floating n, Show n) => n -> TDType n
+  I :: (Integral i, Show i) => i -> TDType i
+  S :: String -> TDType ByteString
+  B :: Bool -> TDType Bool
+  BS :: ByteString -> TDType TDString
+  TDF :: (Floating n) => TDType n -> TDType TDFloat
+  TDI :: (Integral n) => TDType n -> TDType TDInt
+  TDFloatExpr :: (a -> ByteString) -> a -> TDType TDFloat
+  TDIntExpr :: (a -> ByteString) -> a -> TDType TDInt
+  Mod :: (TDNum a, TDNum b) => (ByteString -> ByteString) -> TDType a -> TDType b
+  Mod2 :: (TDNum a, TDNum b, TDNum c) => ((ByteString -> ByteString -> ByteString)) -> TDType a -> TDType b -> TDType c
+  Resolve :: TDType a -> TDType ByteString
 
-  ComponentTree :: (Op a, Op b) => a -> Tree b -> Tree a
+parse :: TDType a -> Maybe ByteString
+parse (F i) = Just $ pack $ show i
+parse (I i) = Just $ pack $ show i
+parse (S s) = Just $ pack s
+parse (B b) = Just $ pack . show $ if b then 1 else 0
+parse (BS bs) = Just bs
+parse (TDF n) = parse n
+parse (TDI n) = parse n
+parse (TDFloatExpr f a) = Just $ f a
+parse (TDIntExpr f a) = Just $ f a
+parse (Mod f a) = f <$> parse a
+parse (Mod2 f a b) = liftA2 f (parse a) (parse b)
+parse (Resolve a) = parse a
+parse Empty = Nothing
 
-  FixedTree :: (Op a) => ByteString -> Tree a -> Tree a
-
-pars :: Lens' (Tree a) a
-pars f (CombineTree t o1 o2) = fmap (\t' -> CombineTree t' o1 o2) (f t)
-pars f (CompositeTree t os) = fmap (\t' -> CompositeTree t' os) (f t)
-pars f (GeneratorTree a) = fmap (\a' -> GeneratorTree a') (f a)
-pars f (EffectTree a aop) = fmap (\a' -> EffectTree a' aop) (f a)
-pars f (FeedbackTree a b c d) = fmap (\a' -> FeedbackTree a' b c d) (f a)
-pars f (ComponentTree a aop) = fmap (\a' -> ComponentTree a' aop) (f a)
-pars f (FixedTree _ aop) = pars f aop
-
-data CommandType = Pulse ByteString deriving Eq
-
-class Op a where
-  opType :: a -> ByteString
-  opPars :: a -> Map ByteString (Param ByteString)
-  opText :: a -> Maybe ByteString
-  opCommands :: a -> [CommandType]
-
-treePar :: (Op a) => Tree a -> Param (Tree a)
-treePar = TreePar
-
-data Param a where
-  File :: ByteString -> Param ByteString
-  TreePar :: (Op a) => Tree a -> Param (Tree a)
-  F :: (Floating n, Show n) => n -> Param n
-  I :: (Integral i, Show i) => i -> Param i
-  S :: String -> Param ByteString
-  B :: Bool -> Param Bool
-  MakeFloat :: (Integral a, Floating b, Show a, Show b) => Param a -> Param b
-  TreeFloat :: (Num n, Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param n
-  TreeString :: (Op a) => (ByteString -> ByteString) -> Param (Tree a) -> Param ByteString
-  ShowP :: Param a -> Param ByteString
-  PyExpr :: (Show a) => ByteString -> Param a
-  Mult :: (Num a, Show a) => Param a -> Param a -> Param a
-  Add :: (Num a, Show a) => Param a -> Param a -> Param a
-  Mod :: (Num a, Num b, Show a) => (ByteString -> ByteString) -> Param a -> Param b
-  Mod2 :: (Num a, Num b, Num c, Show a, Show b, Show c) => (ByteString -> ByteString -> ByteString) -> Param a -> Param b -> Param c
-  Cell :: (Integral a, Integral b, Op c, Show d) => Param a -> Param b -> Param (Tree c) -> Param d
-
-file :: ByteString -> Param ByteString
-file = File
-
-float :: (Floating n, Show n) => n -> Param n
+float :: (Floating n, Show n) => n -> TDType n
 float = F
 
-int :: (Integral i, Show i) => i -> Param i
+int :: (Integral i, Show i) => i -> TDType i
 int = I
 
-ptrue :: Param Bool
+ptrue :: TDType Bool
 ptrue = B True
 
-pfalse :: Param Bool
+pfalse :: TDType Bool
 pfalse = B False
 
-pmax :: (Num n, Show n) => n -> Param n -> Param n
-pmax n = Mod (\num -> concat ["max(", pack . show $ n, ",", num, ")"])
+pmax :: (TDNum n) => TDType n -> TDType n -> TDType n
+pmax = Mod2 (\num n -> concat ["max(", n, ",", num, ")"])
 
-toFloat :: (Integral a, Floating b, Show a, Show b) => Param a -> Param b
-toFloat = MakeFloat
+seconds :: TDType TDFloat
+seconds = TDFloatExpr pack "absTime.seconds"
 
-seconds :: Param Float
-seconds = PyExpr "absTime.seconds"
+frames :: TDType TDInt
+frames = TDIntExpr pack "absTime.frame"
 
-frames :: Param Int
-frames = PyExpr "absTime.frame"
+(!*) :: (TDNum n) => TDType n -> TDType n -> TDType n
+(!*) = Mod2 (\op1 op2 -> concat ["(", op1, "*", op2, ")"])
 
-(!*) :: (Num a, Show a) => Param a -> Param a -> Param a
-(!*) = Mult
+(!+) :: (TDNum n) => TDType n -> TDType n -> TDType n
+(!+) = Mod2 (\op1 op2 -> concat ["(", op1, "+", op2, ")"])
 
-(!+) :: (Num a, Show a) => Param a -> Param a -> Param a
-(!+) = Add
-
-sin :: (Floating a, Show a) => Param a -> Param a
-sin = mathFunc "sin"
-
-sin' :: (Floating a, Show a) => Param a -> Param a
-sin' a = (float 0.5) !+ ((float 0.5) !* sin a)
-
-floor :: (Floating a, Show a) => Param a -> Param a
-floor = mathFunc "floor"
-
-floori :: (Floating a, Integral b, Show a, Show b) => Param a -> Param b
-floori = mathFunc "floor"
-
-(!%) :: (Num a, Show a) => Param a -> Param a -> Param a
+(!%) :: (TDNum n) => TDType n -> TDType n -> TDType n
 (!%) = Mod2 (\op1 op2 -> concat ["(", op1, "%", op2, ")"])
 
-mathFunc :: (Num a, Num b, Show a) => ByteString -> Param a -> Param b
+sin :: TDType TDFloat -> TDType TDFloat
+sin = mathFunc "sin"
+
+sin' :: TDType TDFloat -> TDType TDFloat
+sin' a = (TDF $ float 0.5) !+ ((TDF $ float 0.5) !* sin a)
+
+floorp :: TDType TDFloat -> TDType TDInt
+floorp = mathFunc "floor"
+
+mathFunc :: (TDNum a, TDNum b) => ByteString -> TDType a -> TDType b
 mathFunc f = Mod (\op -> concat ["math.", f, "(", op, ")"])
 
-type Vec3 = (Maybe (Param Float), Maybe (Param Float), Maybe (Param Float))
+type Vec3 = ((TDType TDFloat),  (TDType TDFloat),  (TDType TDFloat))
 
-type Vec2 = (Maybe (Param Float), Maybe (Param Float))
+type Vec2 = ((TDType TDFloat),  (TDType TDFloat))
 
-type IVec2 = (Maybe (Param Int), Maybe (Param Int))
+type IVec2 = ((TDType TDInt),  (TDType TDInt))
 
 type RGB = Vec3
 
 type Dimen = IVec2
 
 grey :: Float -> RGB
-grey = (\a -> (a, a, a)) . Just . float
+grey = (\a -> (a, a, a)) . TDF . float
 
 emptyV3 :: Vec3
-emptyV3 = (Nothing, Nothing, Nothing)
+emptyV3 = (Empty, Empty, Empty)
 
 emptyV2 :: Vec2
-emptyV2 = (Nothing, Nothing)
+emptyV2 = (Empty, Empty)
 
 emptyIV2 :: IVec2
-emptyIV2 = (Nothing, Nothing)
+emptyIV2 = (Empty, Empty)
 
-rgbMap :: String -> RGB -> Map ByteString (Param ByteString)
+rgbMap :: String -> RGB -> Map ByteString (TDType ByteString)
 rgbMap = vec3Map ("r", "g", "b")
 
-dimenMap :: String -> Dimen-> Map ByteString (Param ByteString)
+dimenMap :: String -> Dimen-> Map ByteString (TDType ByteString)
 dimenMap = vec2Map ("w", "h")
 
-vec2Map' :: String -> Vec2 -> Map ByteString (Param ByteString)
+vec2Map' :: String -> Vec2 -> Map ByteString (TDType ByteString)
 vec2Map' = vec2Map ("x", "y")
 
-vec3Map' :: String -> Vec3 -> Map ByteString (Param ByteString)
+vec3Map' :: String -> Vec3 -> Map ByteString (TDType ByteString)
 vec3Map' = vec3Map ("x", "y", "z")
 
-vec2Map :: (Show a) => (String, String) -> String -> (Maybe (Param a), Maybe (Param a)) -> Map ByteString (Param ByteString)
-vec2Map (x, y) pre (xv, yv) = fromListMaybe [ (pack $ pre ++ x, ShowP <$> xv)
-                                            , (pack $ pre ++ y, ShowP <$> yv)
-                                            ]
+vec3Map :: (TDNum a) => (ByteString, ByteString, ByteString) -> String -> (TDType a, TDType a, TDType a) -> Map ByteString (TDType ByteString)
+vec3Map (x, y, z) n (xv, yv, zv) = fromList [(x, Resolve xv),  (y, Resolve yv), (z, Resolve zv)]
 
-vec3Map :: (String, String, String) -> String -> Vec3 -> Map ByteString (Param ByteString)
-vec3Map (x, y, z) pre (xv, yv, zv) = fromListMaybe [ (pack $ pre ++ x, ShowP <$> xv)
-                                                   , (pack $ pre ++ y, ShowP <$> yv)
-                                                   , (pack $ pre ++ z, ShowP <$> zv)
-                                                   ]
-
-fromListMaybe :: (Ord k) => [(k, Maybe a)] -> Map k a
-fromListMaybe = fromList . fmap (\(k, a) -> (k, fromJust a)) . Prelude.filter (isJust . snd)
+vec2Map :: (TDNum a) => (ByteString, ByteString) -> String -> (TDType a, TDType a) -> Map ByteString (TDType ByteString)
+vec2Map (x, y) n (xv, yv) = fromList [(x, Resolve xv),  (y, Resolve yv)]
