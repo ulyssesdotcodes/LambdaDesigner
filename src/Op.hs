@@ -20,6 +20,7 @@ import Control.Monad.Trans.State.Lazy
 import Data.Typeable
 
 import Data.ByteString.Char8 as BS
+import Data.List as L
 import Data.Map.Strict as M
 import Data.Trie as T
 
@@ -37,39 +38,49 @@ class Op a where
   commands :: a -> [CommandType]
   commands _ = []
 
-data CHOP = NoiseCHOP { _chopTimeSlice :: Maybe (Tree Bool)
+data CHOP = ConstantCHOP { _values :: [Tree Float]
+                        }
+          | Count { _chopIns :: [Tree CHOP]
+                  , _countReset :: Maybe (Tree CHOP)
+                  , _countThresh :: Maybe (Tree Float)
+                  , _countLimType :: Maybe (Tree Int)
+                  , _countLimMin :: Maybe (Tree Float)
+                  , _countLimMax :: Maybe (Tree Float)
+                  }
+          | Fan { _fanOp :: Maybe (Tree Int)
+                , _fanOffNeg :: Maybe (Tree Bool)
+                }
+          | FeedbackCHOP
+          | Hold { _holdSource :: Tree CHOP
+                 , _holdTrigger :: Tree CHOP
+                 }
+          | Logic { _chopIns :: [Tree CHOP]
+                  , _logicPreop :: Maybe (Tree Int)
+                  , _logicConvert :: Maybe (Tree Int)
+                  }
+          | Math { _mathAdd :: Maybe (Tree Float)
+                , _mathCombChops :: Maybe (Tree Int)
+                }
+          | MergeCHOP
+          | NoiseCHOP { _chopTimeSlice :: Maybe (Tree Bool)
                       , _noiseCTranslate :: Vec3
                       , _noiseCRoughness :: Maybe (Tree Float)
                       , _noiseCType :: Maybe (Tree Int)
                       , _noiseCPeriod :: Maybe (Tree Float)
                       }
-                | TOPToCHOP { _topToChopTop :: Tree TOP }
-                | Logic { _chopIns :: [Tree CHOP]
-                        , _logicPreop :: Tree Int
-                        , _logicConvert :: Tree Int
-                        }
-                | Hold { _holdSource :: Tree CHOP
-                      , _holdTrigger :: Tree CHOP
+          | SelectCHOP { _selectCChop :: Tree CHOP
                       }
-                | ConstantCHOP { _values :: [Tree Float]
-                              }
-                | FeedbackCHOP
-                | SelectCHOP { _selectCChop :: Tree CHOP
-                            }
-                | Count { _countIn :: Tree CHOP
-                        , _countReset :: Maybe (Tree Float)
-                        , _countThresh :: Maybe (Tree Float)
-                        , _countLimType :: Maybe (Tree Int)
-                        , _countLimMin :: Maybe (Tree Float)
-                        , _countLimMax :: Maybe (Tree Float)
-                        }
-                | MergeCHOP
-                | Fan { _fanOp :: Maybe (Tree Int)
-                      , _fanOffNeg :: Maybe (Tree Bool)
-                      }
-                | Math { _mathAdd :: Maybe (Tree Float)
-                      , _mathCombChops :: Maybe (Tree Int)
-                      }
+          | SOPToCHOP { _sopToChopSop :: Tree SOP }
+
+data SOP = Sphere
+         | OutSOP
+         | CircleSOP { _circType :: Maybe (Tree Int)
+                     , _circArc :: Maybe (Tree Int)
+                     }
+         | NoiseSOP { _noiseSTranslate :: Vec3 }
+         | CHOPToSOP { _chopToSopChop :: Tree CHOP
+                     , _chopToSopAttrScope :: Maybe (Tree BS.ByteString)
+                     }
 
 data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
            | Displace
@@ -116,18 +127,71 @@ makeLenses ''CHOP
 makeLenses ''TOP
 
 instance Op CHOP where
-  opType (NoiseCHOP {}) = "noiseChop"
-  connections (flip (^?) chopIns -> Just cs) = cs
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
                                       , "type" <$$> _noiseCType
                                       , "period" <$$> _noiseCPeriod
                                       ] ++ chopBasePars n
+  pars (SOPToCHOP s) = [("sop", Resolve s)]
+  pars (Logic _ p c) = catMaybes ["preop" <$$> p, "convert" <$$> c]
+  pars (ConstantCHOP v) = L.zipWith (\i v -> (BS.pack $ "value" ++ show i, Resolve v)) [0..] v
+  pars (SelectCHOP c) = [("chop", Resolve c)]
+  pars (Count {..}) = catMaybes ["threshup" <$$> _countThresh, "output" <$$> _countLimType, "limitmin" <$$> _countLimMin, "limitmax" <$$> _countLimMax]
+  pars (Fan o n) = catMaybes ["fanop" <$$> o, "alloff" <$$> n]
+  pars (Math a c) = catMaybes ["preoff" <$$> a, "chopop" <$$> c]
+  opType (SOPToCHOP _) = "sopToChop"
+  opType (Logic {}) = "logic"
+  opType (Hold {}) = "hold"
+  opType (FeedbackCHOP) = "feedbackChop"
+  opType (SelectCHOP _) = "selectChop"
+  opType (Count {}) = "count"
+  opType (Fan _ _) = "fan"
+  opType (MergeCHOP) = "mergeChop"
+  opType (Math _ _) = "math"
+  opType (ConstantCHOP {}) = "constantChop"
+  opType (NoiseCHOP {}) = "noiseChop"
+  commands (Count {}) = [Pulse "reset"]
+  connections (Hold {..}) = [_holdSource, _holdTrigger]
+  connections (maybeToList . flip (^?) chopIns -> cs) = mconcat cs
+
+instance Op SOP where
+  pars (CircleSOP p a) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
+  pars (NoiseSOP t) = vec3Map' "t" t
+  pars (CHOPToSOP c a) = ("chop", Resolve c):(catMaybes [("attscope" <$$> a)])
+  opType (CircleSOP _ _) = "circleSop"
+  opType (NoiseSOP _) = "noiseSop"
+  opType OutSOP = "outSop"
+  opType Sphere = "sphere"
+  opType (CHOPToSOP _ _) = "chopToSop"
 
 chopBasePars :: CHOP -> [(ByteString, (Tree ByteString))]
 chopBasePars c = catMaybes [ "timeslice" <$$> (c ^? chopTimeSlice . _Just)]
 
 (<$$>) :: ByteString -> Maybe (Tree a) -> Maybe (ByteString, Tree ByteString)
 a <$$> b = (a,) . Resolve <$> b
+
+vec3Map :: (ByteString, ByteString, ByteString) -> String -> Vec3 -> [(ByteString, Tree ByteString)]
+vec3Map (x, y, z) n (xv, yv, zv) = catMaybes [x <$$> xv,  y <$$> yv, z <$$> zv]
+
+vec3Map' :: String -> Vec3 -> [(ByteString, Tree ByteString)]
+vec3Map' = vec3Map ("x", "y", "z")
+
+noiseC :: (CHOP -> CHOP) -> Tree CHOP
+noiseC f = C (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing)
+
+count :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
+count f t = C (f $ Count [t] Nothing Nothing Nothing Nothing Nothing)
+
+countTest = Op.count (countReset ?~ noiseC id) (noiseC id)
+
+noiseTest = noiseC ( (noiseCTranslate._1 ?~ float 1.0)
+                   . (noiseCRoughness ?~ float 0.3)
+                   )
+          --         , _countReset :: Maybe (Tree Float)
+          --         , _countThresh :: Maybe (Tree Float)
+          --         , _countLimType :: Maybe (Tree Int)
+          --         , _countLimMin :: Maybe (Tree Float)
+          --         , _countLimMax :: Maybe (Tree Float)
+          --         }
 
 --   opPars (NoiseCHOP t r nt ts p) = M.union (fromListMaybe [ ("roughness", ResolveT r)
 --                                                           , ("type", ResolveT nt)
