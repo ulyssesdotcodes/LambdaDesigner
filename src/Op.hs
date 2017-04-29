@@ -2,8 +2,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Op where
 
@@ -19,87 +21,119 @@ import Data.Typeable
 
 import Data.ByteString.Char8 as BS
 import Data.Map.Strict as M
+import Data.Trie as T
 
-type CHOP = Tree [Float]
-type DAT = Tree ByteString
-data Texture
-type TOP = Tree Texture
-data Geometry
-type SOP = Tree Geometry
-
-data Params = NoiseCHOP { _noiseCTranslate :: Vec3
-                      , _noiseCRoughness :: Maybe (Tree Float)
-                      , _noiseCType :: Maybe (Tree Int)
-                      , _noiseCTimeSlice :: Maybe (Tree Bool)
-                      , _noiseCPeriod :: Maybe (Tree Float)
-                      }
-            | SOPToCHOP { _sopToChopSop :: SOP }
-            | Logic { _logicPreop :: Maybe (Tree Int)
-                    , _logicConvert :: Maybe (Tree Int)
-                    }
-            | Hold
-            | ConstantCHOP { _chans :: [(Maybe (Tree ByteString), Tree Float)]
-                          }
-            | FeedbackCHOP
-            | SelectCHOP { _selectCChop :: CHOP
-                        }
-            | Count { _countThresh :: Maybe (Tree Float)
-                    , _countLimType :: Maybe (Tree Int)
-                    , _countLimMin :: Maybe (Tree Float)
-                    , _countLimMax :: Maybe (Tree Float)
-                    }
-            | MergeCHOP
-            | Fan { _fanOp :: Maybe (Tree Int)
-                  , _fanOffNeg :: Maybe (Tree Bool)
-                  }
-            | Math { _mathAdd :: Maybe (Tree Float)
-                  , _mathCombChops :: Maybe (Tree Int)
-                  }
- bb
 data CommandType = Pulse ByteString deriving Eq
 
-data Messagable = Create BS.ByteString
-                | Connect Int BS.ByteString
-                | Parameter BS.ByteString BS.ByteString
-                | TextContent BS.ByteString
-                | Command CommandType
-                | Fixed BS.ByteString
-                deriving Eq
+class Op a where
+  connections :: a -> [Tree a]
+  connections _ = []
+  pars :: a -> [(ByteString, Tree ByteString)]
+  pars _ = []
+  text :: a -> Maybe ByteString
+  text _ = Nothing
+  opType :: a -> ByteString
+  opType _ = ""
+  commands :: a -> [CommandType]
+  commands _ = []
+
+data CHOP = NoiseCHOP { _chopTimeSlice :: Maybe (Tree Bool)
+                      , _noiseCTranslate :: Vec3
+                      , _noiseCRoughness :: Maybe (Tree Float)
+                      , _noiseCType :: Maybe (Tree Int)
+                      , _noiseCPeriod :: Maybe (Tree Float)
+                      }
+                | TOPToCHOP { _topToChopTop :: Tree TOP }
+                | Logic { _chopIns :: [Tree CHOP]
+                        , _logicPreop :: Tree Int
+                        , _logicConvert :: Tree Int
+                        }
+                | Hold { _holdSource :: Tree CHOP
+                      , _holdTrigger :: Tree CHOP
+                      }
+                | ConstantCHOP { _values :: [Tree Float]
+                              }
+                | FeedbackCHOP
+                | SelectCHOP { _selectCChop :: Tree CHOP
+                            }
+                | Count { _countIn :: Tree CHOP
+                        , _countReset :: Maybe (Tree Float)
+                        , _countThresh :: Maybe (Tree Float)
+                        , _countLimType :: Maybe (Tree Int)
+                        , _countLimMin :: Maybe (Tree Float)
+                        , _countLimMax :: Maybe (Tree Float)
+                        }
+                | MergeCHOP
+                | Fan { _fanOp :: Maybe (Tree Int)
+                      , _fanOffNeg :: Maybe (Tree Bool)
+                      }
+                | Math { _mathAdd :: Maybe (Tree Float)
+                      , _mathCombChops :: Maybe (Tree Int)
+                      }
+
+data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
+           | Displace
+           | MovieFileIn { _movieFileInFile :: Tree BS.ByteString
+                         , _moviePlayMode :: Tree Int
+                         , _movieIndex :: Tree Int
+                         }
+           | OutTOP
+           | NullTOP
+           -- | Render { _renderGeo :: Tree COMP
+           --         , _renderCamera :: Tree COMP
+           --         , _renderLight :: Tree COMP
+           --         }
+
+data PyType = PyFloat | Py
+
+data Tree a where
+  C :: CHOP -> Tree CHOP
+  CT :: Tree CHOP -> Tree TOP
+  PyExprF :: ByteString -> Tree Float
+  PyExprI :: ByteString -> Tree Int
+  PyExpr :: ByteString -> Tree ByteString
+  ChopChan :: Int -> Tree CHOP -> Tree Float
+  Mod :: (Num n) => (ByteString -> ByteString) -> Tree n -> Tree n
+  Mod2 :: (Num n) => (ByteString -> ByteString -> ByteString) -> Tree n -> Tree n -> Tree n
+  Cast :: (Num a, Num b) => (ByteString -> ByteString) -> Tree a -> Tree b
+  Resolve :: Tree a -> Tree ByteString
 
 type Vec3 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
+type IVec2 = (Maybe (Tree Float), Maybe (Tree Float))
 emptyV3 = (Nothing, Nothing, Nothing)
 
 
-data Tree a where
-  Node :: (Show a) => Params -> [Tree a] -> Tree a
-  F :: Float -> Tree Float
-  PyExpr :: ByteString -> Tree Float
-  Add :: Tree Float -> Tree Float -> Tree Float
-  CHOPChannel :: Int -> CHOP -> Tree Float
-
-deriving instance Typeable (Tree a)
-
 float :: Float -> Tree Float
-float = PyExpr . pack . show
+float = PyExprF . pack . show
 
-constChop :: [Float] -> CHOP
-constChop fs = Node (ConstantCHOP $ (Nothing,) . float <$> fs) []
-
-parseTree :: (Monad m) => Tree a -> StateT [Messagable] m ByteString
-parseTree (Node p ts) = do bs <- mapM_ parseTree ts
-                           -- Params from p
-                           -- Create message w/ type from p
-                           return "hi"
-parseTree (PyExpr c) = pure c
-parseTree (Mod2 f ta tb) = do aaddr <- parseTree ta
-                              baddr <- parseTree tb
-                              return $ f aaddr baddr
+int :: Int -> Tree Int
+int = PyExprI . pack . show
 
 add :: (Num a, Show a) => Tree a -> Tree a -> Tree a
 add = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
 
-noiseChop :: CHOP
-noiseChop = Node (NoiseCHOP emptyV3 Nothing Nothing Nothing Nothing) []
+makeLenses ''CHOP
+makeLenses ''TOP
+
+instance Op CHOP where
+  opType (NoiseCHOP {}) = "noiseChop"
+  connections (flip (^?) chopIns -> Just cs) = cs
+  pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
+                                      , "type" <$$> _noiseCType
+                                      , "period" <$$> _noiseCPeriod
+                                      ] ++ chopBasePars n
+
+chopBasePars :: CHOP -> [(ByteString, (Tree ByteString))]
+chopBasePars c = catMaybes [ "timeslice" <$$> (c ^? chopTimeSlice . _Just)]
+
+(<$$>) :: ByteString -> Maybe (Tree a) -> Maybe (ByteString, Tree ByteString)
+a <$$> b = (a,) . Resolve <$> b
+
+--   opPars (NoiseCHOP t r nt ts p) = M.union (fromListMaybe [ ("roughness", ResolveT r)
+--                                                           , ("type", ResolveT nt)
+--                                                           , ("channelname", chan)
+--                                                           , ("timeslice", ResolveT ts)
+--                                                           , ("period", ResolveT p)
 
 -- data CommandType = Pulse ByteString deriving Eq
 

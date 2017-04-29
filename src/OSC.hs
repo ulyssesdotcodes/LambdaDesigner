@@ -8,80 +8,85 @@ module OSC where
 import Prelude hiding (lookup)
 
 import Op
-import Tree
 
 import Control.Monad.Trans.State.Lazy
 import Control.Lens
 import Data.Maybe
-import Data.Trie
 import Sound.OSC
-import Sound.OSC.Transport.FD as T
+import Sound.OSC.Transport.FD as OT
 
-import qualified Data.ByteString.Char8 as BS
-import qualified Data.List as L
-import qualified Data.Map.Strict as M
+import Data.ByteString.Char8 as BS
+import Data.List as L
+import Data.Map.Strict as M
+import Data.Trie as T
+
+data Messagable = Create BS.ByteString
+                | Connect Int BS.ByteString
+                | Parameter BS.ByteString BS.ByteString
+                | TextContent BS.ByteString
+                | Command CommandType
+                | Fixed BS.ByteString
+                deriving Eq
+
+type Messages = Trie [Messagable]
 
 
 instance Ord Message where
-  compare (Message (length . filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (length . filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
+  compare (Message (L.length . L.filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (L.length . L.filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
   compare (Message _ ((ASCII_String "create"):_)) _ = LT
   compare _ (Message _ ((ASCII_String "create"):_)) = GT
   compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
   compare (Message _ ((ASCII_String "command"):_)) _ = GT
   compare _ _ = EQ
 
+parseTree :: (Monad m) => Tree a -> StateT Messages m ByteString
+parseTree (C p) = opsMessages p
+parseTree (PyExprF c) = pure c
+parseTree (PyExprI c) = pure c
+parseTree (Mod f ta) = do aaddr <- parseTree ta
+                          return $ f aaddr
+parseTree (Mod2 f ta tb) = do aaddr <- parseTree ta
+                              baddr <- parseTree tb
+                              return $ f aaddr baddr
 
-makeExpr :: (Monad m, Num f) => Param f -> Param f -> BS.ByteString -> StateT Messages m BS.ByteString
-makeExpr a b op = do abs <- parseParam a
-                     bbs <- parseParam b
-                     return $ BS.concat ["(", abs," " ,op ," " , bbs, ")"]
 
-op0Messages :: (Monad m, Op a) => a -> StateT Messages m BS.ByteString
-op0Messages a = opsMessages a []
-
-op1Messages :: (Monad m, Op a) => a -> Tree a -> StateT Messages m BS.ByteString
-op1Messages a op1 = opsMessages a [op1]
-
-op2Messages :: (Monad m, Op a) => a -> Tree a -> Tree a -> StateT Messages m BS.ByteString
-op2Messages a op1 op2 = opsMessages a [op1, op2]
-
-opsMessages :: (Monad m, Op a) => a -> [Tree a] -> StateT Messages m BS.ByteString
-opsMessages a ops = do let ty = opType a
-                       messages <- get
-                       let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
-                       let addr = BS.concat ["/", ty, findEmpty nodesOfType]
-                       let createMessage = Create ty
-                       let textMessage =
-                             case opText a of
-                               Just content -> [TextContent content]
-                               Nothing -> []
-                       let commandMessages = map Command $ opCommands a
-                       modify $ insert addr (createMessage:textMessage ++ commandMessages)
-                       sequence_ $ M.foldrWithKey (\k p parstates -> (do val <- parseParam p
-                                                                         let msg = Parameter k val
-                                                                         modify $ adjust ((:) msg) addr
-                                                                         return ()):parstates) [] (opPars a)
-                       sequence_ . map (\(i, op) -> do a <- parseTree op
-                                                       let connect = Connect i a
-                                                       modify $ adjust ((:) connect) addr
-                                                       return a) . zip [0..] $ ops
-                       removeDuplicates addr (opType a)
+opsMessages :: (Monad m, Op a) => a -> StateT Messages m BS.ByteString
+opsMessages a = do let ty = opType a
+                   messages <- get
+                   let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
+                   let addr = BS.concat ["/", ty, findEmpty nodesOfType]
+                   let createMessage = Create ty
+                   let textMessage =
+                         case text a of
+                           Just content -> [TextContent content]
+                           Nothing -> []
+                   let commandMessages = Prelude.map Command $ commands a
+                   modify $ T.insert addr (createMessage:textMessage ++ commandMessages)
+                   mapM_ (\(k, p) -> do val <- parseTree p
+                                        let msg = Parameter k val
+                                        modify $ T.adjust ((:) msg) addr
+                                        return ()) (pars a)
+                   mapM_ (\(i, op) -> do a <- parseTree op
+                                         let connect = Connect i a
+                                         modify $ T.adjust ((:) connect) addr
+                                         return a) . Prelude.zip [0..] $ connections a
+                   removeDuplicates addr (opType a)
 
 removeDuplicates :: (Monad m) => BS.ByteString -> BS.ByteString -> StateT Messages m BS.ByteString
 removeDuplicates addr ty = do messages <- get
                               let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
-                              let addrMsgs = lookup addr messages
+                              let addrMsgs = T.lookup addr messages
                               -- If messages are all the same then they're equivalent so we can combine the nodes
-                              case filter (\(a, ms) -> a /= addr && addrMsgs == Just ms) (toList nodesOfType) of
-                                ((maddr, _):_) -> do modify . delete $ addr
+                              case L.filter (\(a, ms) -> a /= addr && addrMsgs == Just ms) (T.toList nodesOfType) of
+                                ((maddr, _):_) -> do modify . T.delete $ addr
                                                      return maddr
                                 _ -> return addr
 
 findEmpty :: Messages -> BS.ByteString
-findEmpty = BS.pack . show . length . keys
+findEmpty = pack . show . L.length . T.keys
 
 makeMessages :: Messages -> [Message]
-makeMessages = L.sort . allMsgs . toList
+makeMessages = L.sort . allMsgs . T.toList
                where
                  allMsgs ((addr, msgs):ms) = (addrMsgs addr msgs) ++ allMsgs ms
                  allMsgs [] = []
@@ -95,4 +100,4 @@ makeMessages = L.sort . allMsgs . toList
 
 
 sendMessages :: UDP -> [Message] -> IO ()
-sendMessages conn ms = T.sendOSC conn $ Bundle 0 $ ms
+sendMessages conn ms = OT.sendOSC conn $ Bundle 0 $ ms
