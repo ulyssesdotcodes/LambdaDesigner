@@ -4,7 +4,6 @@
 module Scratch where
 
 import Op
-import Tree
 import Lib
 
 import Prelude hiding (floor, mod)
@@ -18,7 +17,7 @@ finalout = outTop $ switchTop (chopChan0 $ invert held) [deckA, deckB]
 
 secChop = constChop (floor seconds)
 
-invert l = logic l & pars.logicPreop .~ Just (int 1)
+invert l = logic (logicPreop ?~ int 1) l
 
 movieIndA = hold movieInd held
 movieIndB = hold movieInd (invert held)

@@ -31,7 +31,6 @@ class Op a where
   connections :: a -> [Tree a]
   connections _ = []
   pars :: a -> [(ByteString, Tree ByteString)]
-  pars _ = []
   text :: a -> Maybe ByteString
   text _ = Nothing
   opType :: a -> ByteString
@@ -190,11 +189,12 @@ instance Op CHOP where
                                       ] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", Resolve s)] ++ chopBasePars n
   pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
-  pars n@(ConstantCHOP v) = L.zipWith (\i v -> (BS.pack $ "value" ++ show i, Resolve v)) [0..] v ++ chopBasePars n
+  pars n@(ConstantCHOP v) = L.zipWith (\i v' -> (BS.pack $ "value" ++ show i, Resolve v')) [0..] v ++ chopBasePars n
   pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
   pars n@(Count {..}) = catMaybes ["threshup" <$$> _countThresh, "output" <$$> _countLimType, "limitmin" <$$> _countLimMin, "limitmax" <$$> _countLimMax] ++ chopBasePars n
   pars n@(Fan o off _) = catMaybes ["fanop" <$$> o, "alloff" <$$> off] ++ chopBasePars n
   pars n@(Math a c _) = catMaybes ["preoff" <$$> a, "chopop" <$$> c] ++ chopBasePars n
+  pars _ = []
   opType (SOPToCHOP _) = "sopToChop"
   opType (Logic {}) = "logic"
   opType (Hold {}) = "hold"
@@ -219,6 +219,7 @@ instance Op DAT where
                                                                                     ])
   pars (TextDAT _ f) = catMaybes [("file" <$$> f)]
   pars (TCPIPDAT m d f) = ("callbacks", Resolve d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
+  pars _ = []
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opType (TextDAT _ _) = "textDat"
   opType (Table _) = "table"
@@ -236,6 +237,7 @@ instance Op DAT where
       concatFunc (name, body) = BS.append (makec name) body
       makec prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev): \n"]
   text (TextDAT t _) = t
+  text _ = Nothing
   commands (TextDAT _ (isJust -> True)) = [Pulse "loadonstartpulse"]
   commands _ = []
   --connections (maybeToList . flip (^?) datIns -> cs) = mconcat cs
@@ -264,6 +266,7 @@ instance Op TOP where
   pars (SwitchTOP i _) = [("index", Resolve i)]
   pars (Ramp t p r dat) = ("dat", Resolve  dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
   pars (SelectTOP c) = catMaybes [("top" <$$> c)]
+  pars _ = []
 
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP {}) = "compositeTop"
@@ -281,7 +284,7 @@ instance Op TOP where
   opType (SwitchTOP {}) = "switchTop"
   opType (SelectTOP _) = "selectTop"
   connections (maybeToList . flip (^?) topIns -> cs) = mconcat cs
-  commands _ = []
+  connections _ = mempty
 
 chopBasePars :: CHOP -> [(ByteString, (Tree ByteString))]
 chopBasePars c = catMaybes [ "timeslice" <$$> (c ^? chopTimeSlice . _Just)]
