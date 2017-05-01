@@ -38,7 +38,7 @@ classes = {
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
   'hold' : (holdCHOP, 'hold', 'CHOP'),
   'logic' : (logicCHOP, 'logic', 'CHOP'),
-  'noiseCHOP' : (noiseCHOP, 'noise', 'CHOP'),
+  'noiseChop' : (noiseCHOP, 'noise', 'CHOP'),
   'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
   'selectChop' : (selectCHOP, 'select', 'CHOP'),
   'count' : (countCHOP, 'count', 'CHOP'),

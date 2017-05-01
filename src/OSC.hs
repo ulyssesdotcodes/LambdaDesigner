@@ -40,21 +40,44 @@ instance Ord Message where
   compare _ _ = EQ
 
 parseTree :: (Monad m) => Tree a -> StateT Messages m ByteString
-parseTree (C p) = opsMessages p
-parseTree (PyExprF c) = pure c
-parseTree (PyExprI c) = pure c
+parseTree (N p) = opsMessages p
+parseTree (FC fpars reset sel loop) = do messages <- get
+                                         saddr <- evalStateT (parseTree $ N (SelectCHOP Nothing)) messages
+                                         laddr <- parseTree (N $ fpars & chopIns .~ [loop . sel $ N (SelectCHOP Nothing), reset])
+                                         modify $ T.adjust ((:) (Parameter "chop" laddr)) saddr
+                                         return laddr
+parseTree (FT fpars reset sel loop) = do messages <- get
+                                         saddr <- evalStateT (parseTree $ N (SelectTOP Nothing)) messages
+                                         laddr <- parseTree (N $ fpars & topIns .~ [reset] & fbTop .~ (Just . loop . sel $ N (SelectTOP Nothing)))
+                                         modify $ T.adjust ((:) (Parameter "top" laddr)) saddr
+                                         return laddr
+parseTree (Fix name op) = do messages <- get
+                             let name' = BS.append "/" name
+                             case T.member name' messages of
+                               True -> return name'
+                               False -> do addr <- parseTree op
+                                           messages' <- get
+                                           modify $ T.insert name' . ((:) (Fixed name)) . fromJust $ T.lookup addr messages'
+                                           modify $ T.delete addr
+                                           return name'
+
+parseTree (PyExpr s) = pure s
+parseTree (ChopChan i c) = do addr <- parseTree c
+                              return $ BS.concat [addr, "[", pack $ show i, "]"]
 parseTree (Mod f ta) = do aaddr <- parseTree ta
                           return $ f aaddr
 parseTree (Mod2 f ta tb) = do aaddr <- parseTree ta
                               baddr <- parseTree tb
                               return $ f aaddr baddr
+parseTree (Cast f a) = do aaddr <- parseTree a
+                          return $ f aaddr
+parseTree (Resolve r) = parseTree r
 
 
 opsMessages :: (Monad m, Op a) => a -> StateT Messages m BS.ByteString
 opsMessages a = do let ty = opType a
                    messages <- get
-                   let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
-                   let addr = BS.concat ["/", ty, findEmpty nodesOfType]
+                   let addr = findEmpty ty messages
                    let createMessage = Create ty
                    let textMessage =
                          case text a of
@@ -82,8 +105,8 @@ removeDuplicates addr ty = do messages <- get
                                                      return maddr
                                 _ -> return addr
 
-findEmpty :: Messages -> BS.ByteString
-findEmpty = pack . show . L.length . T.keys
+findEmpty :: ByteString -> Messages -> BS.ByteString
+findEmpty ty = BS.append (BS.append "/" ty) . pack . show . L.length . T.keys . submap (BS.append (BS.pack "/") ty)
 
 makeMessages :: Messages -> [Message]
 makeMessages = L.sort . allMsgs . T.toList
