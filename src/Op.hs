@@ -20,7 +20,9 @@ import Data.Maybe
 import Data.ByteString.Char8 as BS
 import Data.List as L
 
-data CommandType = Pulse ByteString deriving Eq
+data CommandType = Pulse ByteString
+                 | Store ByteString (Tree ByteString)
+
 
 class Op a where
   connections :: a -> [Tree a]
@@ -80,6 +82,7 @@ data DAT = Table { _tableText :: Matrix ByteString
                     }
          | TextDAT { _textBlob :: Maybe BS.ByteString
                    , _textFile :: Maybe (Tree BS.ByteString)
+                   , _textVariables :: [(ByteString, Tree ByteString)]
                    }
          | TCPIPDAT { _tcpipMode :: Maybe (Tree Int)
                     , _tcpipCallbacks :: Tree DAT
@@ -240,11 +243,11 @@ instance Op DAT where
                                                                                     , ("whileoff",) . PyExpr <$> woff
                                                                                     , ("valuechange",) . PyExpr <$> vc
                                                                                     ])
-  pars (TextDAT _ f) = catMaybes [("file" <$$> f)]
+  pars (TextDAT {..}) = catMaybes [("file" <$$> _textFile)]
   pars (TCPIPDAT m d f) = ("callbacks", Resolve d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
   pars _ = []
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
-  opType (TextDAT _ _) = "textDat"
+  opType (TextDAT {}) = "textDat"
   opType (Table _) = "table"
   opType (TCPIPDAT _ _ _) = "tcpip"
   text (Table t) = Just . BS.intercalate ("\n") . fmap (BS.intercalate ("\t")) . toLists $ t
@@ -259,9 +262,9 @@ instance Op DAT where
     where
       concatFunc (name, body) = BS.append (makec name) body
       makec prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev): \n"]
-  text (TextDAT t _) = t
+  text (TextDAT {..}) = _textBlob
   text _ = Nothing
-  commands (TextDAT _ (isJust -> True)) = [Pulse "loadonstartpulse"]
+  commands (TextDAT _ f cs) = (maybeToList $ const (Pulse "loadonstartpulse") <$> f) ++ (uncurry Store <$> cs)
   commands _ = []
   --connections (maybeToList . flip (^?) datIns -> cs) = mconcat cs
 
@@ -307,7 +310,6 @@ instance Op TOP where
   opType (SwitchTOP {}) = "switchTop"
   opType (SelectTOP _) = "selectTop"
   connections (maybeToList . flip (^?) topIns -> cs) = mconcat cs
-  connections _ = mempty
 
 chopBasePars :: CHOP -> [(ByteString, (Tree ByteString))]
 chopBasePars c = catMaybes [ "timeslice" <$$> (c ^? chopTimeSlice . _Just)]
@@ -399,11 +401,13 @@ cell = Cell
 -- cellf :: (Integral a, Integral b, Floating f, Show f) => (Tree a, Tree b) -> Tree DAT -> Tree f
 -- cellf (x, y) t = Cell x y (treePar t)
 
-textD :: String -> Tree DAT
-textD t = N $ TextDAT (Just $ BS.pack t) Nothing
+textD' :: (DAT -> DAT) -> String -> Tree DAT
+textD' f t = N . f $ TextDAT (Just $ BS.pack t) Nothing []
+textD = textD' id
 
-fileD :: String -> Tree DAT
-fileD f = N (TextDAT Nothing (Just . PyExpr $ BS.pack ("\"" ++ f ++ "\"")))
+fileD' :: (DAT -> DAT) -> String -> Tree DAT
+fileD' f file = N . f $ (TextDAT Nothing (Just . PyExpr $ BS.pack ("\"" ++ file ++ "\"")) [])
+fileD = fileD' id
 
 tcpipD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 tcpipD' f d = N . f $ TCPIPDAT Nothing d Nothing

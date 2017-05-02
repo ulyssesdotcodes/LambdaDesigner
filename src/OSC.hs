@@ -24,7 +24,7 @@ data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
                 | Parameter BS.ByteString BS.ByteString
                 | TextContent BS.ByteString
-                | Command CommandType
+                | Command ByteString [ByteString]
                 | Fixed BS.ByteString
                 deriving Eq
 
@@ -87,6 +87,11 @@ parseTree (Cast f a) = do aaddr <- parseParam a
                           return $ f aaddr
 parseTree (Resolve r) = parseTree r
 
+parseCommand :: (Monad m) => CommandType -> StateT Messages m Messagable
+parseCommand (Pulse bs) = pure $ Command "pulse" [bs]
+parseCommand (Store bs t) = do ttype <- parseParam t
+                               return $ Command "store" [bs, ttype]
+
 
 opsMessages :: (Monad m, Op a) => a -> StateT Messages m ByteString
 opsMessages a = do let ty = opType a
@@ -97,8 +102,7 @@ opsMessages a = do let ty = opType a
                          case text a of
                            Just content -> [TextContent content]
                            Nothing -> []
-                   let commandMessages = Prelude.map Command $ commands a
-                   modify $ T.insert addr (createMessage:textMessage ++ commandMessages)
+                   modify $ T.insert addr (createMessage:textMessage)
                    mapM_ (\(k, p) -> do val <- parseParam p
                                         let msg = Parameter k val
                                         modify $ T.adjust ((:) msg) addr
@@ -107,6 +111,9 @@ opsMessages a = do let ty = opType a
                                          let connect = Connect i a
                                          modify $ T.adjust ((:) connect) addr
                                          return a) . Prelude.zip [0..] $ connections a
+                   mapM_ (\c -> do m <- parseCommand c
+                                   modify $ T.adjust ((:) m) addr
+                                   return ()) (commands a)
                    addr' <- removeDuplicates addr (opType a)
                    return $ addr'
 
@@ -131,7 +138,7 @@ makeMessages = L.sort . allMsgs . T.toList
                  addrMsgs addr ((Create ty):ms) = (Message (BS.unpack addr) [string "create", ASCII_String ty]):(addrMsgs addr ms)
                  addrMsgs addr ((Connect i caddr):ms) = (Message (BS.unpack addr) [string "connect", int32 i, ASCII_String caddr]):(addrMsgs addr ms)
                  addrMsgs addr ((Parameter k v):ms) = (Message (BS.unpack addr) [string "parameter", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
-                 addrMsgs addr ((Command (Pulse k)):ms) = (Message (BS.unpack addr) [string "command", string "pulse", ASCII_String k]):(addrMsgs addr ms)
+                 addrMsgs addr ((Command c bs):ms) = (Message (BS.unpack addr) $ [string "command", ASCII_String c] ++ (ASCII_String <$> bs)):(addrMsgs addr ms)
                  addrMsgs addr ((TextContent content):ms) = (Message (BS.unpack addr) [string "text", ASCII_String content]):(addrMsgs addr ms)
                  addrMsgs addr ((Fixed _):ms) = addrMsgs addr ms
                  addrMsgs _ [] = []

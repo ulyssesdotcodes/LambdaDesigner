@@ -108,6 +108,8 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
       pars = op(addr).pars(args[2])
       if len(pars) > 0:
         pars[0].pulse()
+    elif args[1] == "store":
+      op(addr).store(args[2], args[3])
 
   elif args[0] == "text" and op(addr):
     op(addr).text = args[1]
