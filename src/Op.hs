@@ -82,11 +82,12 @@ data DAT = Table { _tableText :: Matrix ByteString
                     }
          | TextDAT { _textBlob :: Maybe BS.ByteString
                    , _textFile :: Maybe (Tree BS.ByteString)
-                   , _textVariables :: [(ByteString, Tree ByteString)]
+                   , _datVars :: [(ByteString, Tree ByteString)]
                    }
          | TCPIPDAT { _tcpipMode :: Maybe (Tree Int)
                     , _tcpipCallbacks :: Tree DAT
                     , _tcpipCallbackFormat :: Maybe (Tree Int)
+                    , _datVars :: [(ByteString, Tree ByteString)]
                     }
 
 data SOP = Sphere
@@ -156,6 +157,7 @@ data Tree a where
   Mod2 :: (Num n) => (ByteString -> ByteString -> ByteString) -> Tree n -> Tree n -> Tree n
   Cast :: (Num b) => (ByteString -> ByteString) -> Tree a -> Tree b
   Resolve :: Tree a -> Tree ByteString
+  ResolveP :: Tree a -> Tree ByteString
 
 type Vec2 = (Maybe (Tree Float), Maybe (Tree Float))
 type Vec3 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
@@ -244,12 +246,12 @@ instance Op DAT where
                                                                                     , ("valuechange",) . PyExpr <$> vc
                                                                                     ])
   pars (TextDAT {..}) = catMaybes [("file" <$$> _textFile)]
-  pars (TCPIPDAT m d f) = ("callbacks", Resolve d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
+  pars (TCPIPDAT m d f _) = ("callbacks", ResolveP d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
   pars _ = []
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opType (TextDAT {}) = "textDat"
   opType (Table _) = "table"
-  opType (TCPIPDAT _ _ _) = "tcpip"
+  opType (TCPIPDAT _ _ _ _) = "tcpip"
   text (Table t) = Just . BS.intercalate ("\n") . fmap (BS.intercalate ("\t")) . toLists $ t
   text (ChopExec _ offon won onoff woff vc) =
     Just . BS.intercalate "\n\n" . (traverse %~ concatFunc)
@@ -265,7 +267,7 @@ instance Op DAT where
   text (TextDAT {..}) = _textBlob
   text _ = Nothing
   commands (TextDAT _ f cs) = (maybeToList $ const (Pulse "loadonstartpulse") <$> f) ++ (uncurry Store <$> cs)
-  commands _ = []
+  commands ((view datVars) -> tvs) = uncurry Store <$> tvs
   --connections (maybeToList . flip (^?) datIns -> cs) = mconcat cs
 
 instance Op SOP where
@@ -348,7 +350,7 @@ count' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 count' f t = N ins
   where
     def = f $ Count [t] Nothing Nothing Nothing Nothing Nothing
-    ins = def & chopIns %~ ((++) (catMaybes . maybeToList $ def ^? countReset))
+    ins = def & chopIns %~ (flip (++) (catMaybes . maybeToList $ def ^? countReset))
 count = count' id
 
 constC :: [Tree Float] -> Tree CHOP
@@ -410,7 +412,7 @@ fileD' f file = N . f $ (TextDAT Nothing (Just . PyExpr $ BS.pack ("\"" ++ file 
 fileD = fileD' id
 
 tcpipD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
-tcpipD' f d = N . f $ TCPIPDAT Nothing d Nothing
+tcpipD' f d = N . f $ TCPIPDAT Nothing d Nothing []
 
 -- SOPs
 

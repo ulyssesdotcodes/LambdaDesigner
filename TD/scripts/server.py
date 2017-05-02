@@ -57,7 +57,9 @@ def receive(dat, rowIndex, message, bytes, peer):
         try:
             payload = eval(fullMsg['payload'])
             voteNum = payload.get('votenum',None)
-            op('voteNum' + str(voteNum)).par.value0.pulse(1, frames=2)
+            voteNumOp = op(dat.fetch("vote" + str(voteNum), "--")[1:])
+            if voteNumOp:
+              voteNumOp.par.value0.pulse(1, frames=2)
         except:
             if fullMsg['payload'] == b'\x03\xe9':
                 peerList.pop(peer.port,None)

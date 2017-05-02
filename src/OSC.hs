@@ -86,6 +86,7 @@ parseTree (Mod2 f ta tb) = do aaddr <- parseParam ta
 parseTree (Cast f a) = do aaddr <- parseParam a
                           return $ f aaddr
 parseTree (Resolve r) = parseTree r
+parseTree (ResolveP r) = parseParam r
 
 parseCommand :: (Monad m) => CommandType -> StateT Messages m Messagable
 parseCommand (Pulse bs) = pure $ Command "pulse" [bs]

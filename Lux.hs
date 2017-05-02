@@ -63,7 +63,7 @@ votesList = [ [19, 34, 35]
             , [15, 34, 35]
             ]
 
-server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2))) (fileD "scripts/server.py")
+server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)) . (datVars .~ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums)) (fileD "scripts/server.py")
 
 peers = fix "myPeers" $ textD ""
 
