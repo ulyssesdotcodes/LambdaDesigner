@@ -39,17 +39,27 @@ instance Ord Message where
   compare (Message _ ((ASCII_String "command"):_)) _ = GT
   compare _ _ = EQ
 
+parseParam :: (Monad m) => Tree a -> StateT Messages m ByteString
+parseParam t@(N p) = parseTree t >>= return . wrapOp
+parseParam t@(FC {}) = parseTree t >>= return . wrapOp
+parseParam t@(FT {}) = parseTree t >>= return . wrapOp
+parseParam t@(Fix {}) = parseTree t >>= return . wrapOp
+parseParam t = parseTree t
+
+wrapOp :: ByteString -> ByteString
+wrapOp op = BS.concat ["op(\"", BS.tail op, "\")"]
+
 parseTree :: (Monad m) => Tree a -> StateT Messages m ByteString
 parseTree (N p) = opsMessages p
-parseTree (FC fpars reset sel loop) = do messages <- get
+parseTree (FC fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectCHOP Nothing)) messages
-                                         laddr <- parseTree (N $ fpars & chopIns .~ [loop . sel $ N (SelectCHOP Nothing), reset])
-                                         modify $ T.adjust ((:) (Parameter "chop" laddr)) saddr
+                                         laddr <- parseTree (loop $ N $ fpars & chopIns .~ [sel $ N (SelectCHOP Nothing), reset])
+                                         modify $ T.adjust ((:) (Parameter "chop" $ wrapOp laddr)) $ saddr
                                          return laddr
-parseTree (FT fpars reset sel loop) = do messages <- get
+parseTree (FT fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectTOP Nothing)) messages
                                          laddr <- parseTree (N $ fpars & topIns .~ [reset] & fbTop .~ (Just . loop . sel $ N (SelectTOP Nothing)))
-                                         modify $ T.adjust ((:) (Parameter "top" laddr)) saddr
+                                         modify $ T.adjust ((:) (Parameter "top" $ wrapOp laddr)) $ saddr
                                          return laddr
 parseTree (Fix name op) = do messages <- get
                              let name' = BS.append "/" name
@@ -62,19 +72,23 @@ parseTree (Fix name op) = do messages <- get
                                            return name'
 
 parseTree (PyExpr s) = pure s
-parseTree (ChopChan i c) = do addr <- parseTree c
+parseTree (ChopChan i c) = do addr <- parseParam c
                               return $ BS.concat [addr, "[", pack $ show i, "]"]
-parseTree (Mod f ta) = do aaddr <- parseTree ta
-                          return $ f aaddr
-parseTree (Mod2 f ta tb) = do aaddr <- parseTree ta
-                              baddr <- parseTree tb
+parseTree (Cell (r, c) t) = do addr <- parseParam t
+                               r' <- parseParam r
+                               c' <- parseParam c
+                               return $ BS.concat [addr, "[", r', ",", c', "]"]
+parseTree (Mod f ta) = do aaddr <- parseParam ta
+                          return . f $ aaddr
+parseTree (Mod2 f ta tb) = do aaddr <- parseParam ta
+                              baddr <- parseParam tb
                               return $ f aaddr baddr
-parseTree (Cast f a) = do aaddr <- parseTree a
+parseTree (Cast f a) = do aaddr <- parseParam a
                           return $ f aaddr
 parseTree (Resolve r) = parseTree r
 
 
-opsMessages :: (Monad m, Op a) => a -> StateT Messages m BS.ByteString
+opsMessages :: (Monad m, Op a) => a -> StateT Messages m ByteString
 opsMessages a = do let ty = opType a
                    messages <- get
                    let addr = findEmpty ty messages
@@ -85,7 +99,7 @@ opsMessages a = do let ty = opType a
                            Nothing -> []
                    let commandMessages = Prelude.map Command $ commands a
                    modify $ T.insert addr (createMessage:textMessage ++ commandMessages)
-                   mapM_ (\(k, p) -> do val <- parseTree p
+                   mapM_ (\(k, p) -> do val <- parseParam p
                                         let msg = Parameter k val
                                         modify $ T.adjust ((:) msg) addr
                                         return ()) (pars a)
@@ -93,7 +107,8 @@ opsMessages a = do let ty = opType a
                                          let connect = Connect i a
                                          modify $ T.adjust ((:) connect) addr
                                          return a) . Prelude.zip [0..] $ connections a
-                   removeDuplicates addr (opType a)
+                   addr' <- removeDuplicates addr (opType a)
+                   return $ addr'
 
 removeDuplicates :: (Monad m) => BS.ByteString -> BS.ByteString -> StateT Messages m BS.ByteString
 removeDuplicates addr ty = do messages <- get

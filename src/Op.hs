@@ -11,19 +11,14 @@ module Op where
 
 import Prelude hiding (sin)
 
--- import Tree
-
 import Control.Lens
 import Data.Bool
+import Data.List.Lens
 import Data.Matrix
 import Data.Maybe
-import Control.Monad.Trans.State.Lazy
-import Data.Typeable
 
 import Data.ByteString.Char8 as BS
 import Data.List as L
-import Data.Map.Strict as M
-import Data.Trie as T
 
 data CommandType = Pulse ByteString deriving Eq
 
@@ -153,9 +148,10 @@ data Tree a where
   Fix :: (Op a) => ByteString -> Tree a -> Tree a
   PyExpr :: ByteString -> Tree a
   ChopChan :: Int -> Tree CHOP -> Tree Float
+  Cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree ByteString
   Mod :: (Num n) => (ByteString -> ByteString) -> Tree n -> Tree n
   Mod2 :: (Num n) => (ByteString -> ByteString -> ByteString) -> Tree n -> Tree n -> Tree n
-  Cast :: (Num a, Num b) => (ByteString -> ByteString) -> Tree a -> Tree b
+  Cast :: (Num b) => (ByteString -> ByteString) -> Tree a -> Tree b
   Resolve :: Tree a -> Tree ByteString
 
 type Vec2 = (Maybe (Tree Float), Maybe (Tree Float))
@@ -174,8 +170,35 @@ int = PyExpr . pack . show
 bool :: Bool -> Tree Bool
 bool = PyExpr . Data.Bool.bool "0" "1"
 
-add :: (Num a, Show a) => Tree a -> Tree a -> Tree a
-add = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
+(!+) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
+(!+) = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
+
+(!*) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
+(!*) = Mod2 (\a b -> BS.concat ["(", a, "*", b, ")"])
+
+(!%) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
+(!%) = Mod2 (\a b -> BS.concat ["(", a, "%", b, ")"])
+
+seconds :: Tree Float
+seconds = PyExpr "absTime.seconds"
+
+frames :: Tree Int
+frames = PyExpr "absTime.frame"
+
+floor :: (Num n) => Tree n -> Tree n
+floor = pyMathOp "floor"
+
+pmax :: (Num n) => Tree n -> Tree n -> Tree n
+pmax = Mod2 (\s t -> BS.concat ["max(", s, ", ", t, ")"])
+
+pyMathOp :: (Num n) => String -> Tree n -> Tree n
+pyMathOp s = Mod (\n -> BS.concat ["math.", pack s, "(", n, ")"])
+
+chopChan0 :: Tree CHOP -> Tree Float
+chopChan0 = ChopChan 0
+
+fix :: (Op a) => BS.ByteString -> Tree a -> Tree a
+fix = Fix
 
 makeLenses ''CHOP
 makeLenses ''DAT
@@ -307,17 +330,27 @@ vec3Map (x, y, z) n (xv, yv, zv) = catMaybes [x <$$> xv,  y <$$> yv, z <$$> zv]
 vec3Map' :: String -> Vec3 -> [(ByteString, Tree ByteString)]
 vec3Map' = vec3Map ("x", "y", "z")
 
-casti :: (Show f, Floating f, Integral i) => Tree f -> Tree i
+casti :: (Integral i) => Tree f -> Tree i
 casti = Cast (\fl -> BS.concat ["int(", fl, ")"])
+
+castf :: (Floating f) => Tree i -> Tree f
+castf = Cast (\fl -> BS.concat ["float(", fl, ")"])
 
 -- CHOPs
 
-noiseC :: (CHOP -> CHOP) -> Tree CHOP
-noiseC f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing)
+noiseC' :: (CHOP -> CHOP) -> Tree CHOP
+noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing)
+noiseC = noiseC' id
 
 count' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
-count' f t = N (f $ Count [t] Nothing Nothing Nothing Nothing Nothing)
+count' f t = N ins
+  where
+    def = f $ Count [t] Nothing Nothing Nothing Nothing Nothing
+    ins = def & chopIns %~ ((++) (catMaybes . maybeToList $ def ^? countReset))
 count = count' id
+
+constC :: [Tree Float] -> Tree CHOP
+constC = N <$> ConstantCHOP
 
 selectC :: Tree CHOP -> Tree CHOP
 selectC = N <$> SelectCHOP . Just
@@ -360,8 +393,8 @@ table = N <$> Table
 chopExec' :: (DAT -> DAT) -> Tree CHOP -> Tree DAT
 chopExec' f chop = N $ f $ ChopExec chop Nothing Nothing Nothing Nothing Nothing
 
--- cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree BS.ByteString
--- cell (x, y) t = Cell x y (treePar t)
+cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree BS.ByteString
+cell = Cell
 
 -- cellf :: (Integral a, Integral b, Floating f, Show f) => (Tree a, Tree b) -> Tree DAT -> Tree f
 -- cellf (x, y) t = Cell x y (treePar t)
@@ -394,8 +427,9 @@ chopToS c = N $ CHOPToSOP c Nothing
 
 -- Tops
 
-movieFileIn' :: (TOP -> TOP) -> BS.ByteString -> Tree TOP
-movieFileIn' f file = N . f $ (MovieFileIn (PyExpr file) Nothing Nothing)
+movieFileIn' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
+movieFileIn' f file = N . f $ (MovieFileIn file Nothing Nothing)
+movieFileIn = movieFileIn' id
 
 displace :: Tree TOP -> Tree TOP -> Tree TOP
 displace a b = N $ Displace [a, b]
@@ -435,11 +469,11 @@ noiseT' f = N $ f $ NoiseTOP Nothing emptyV2 emptyV3
 ramp :: [(Float, Float, Float, Float, Float)] -> Tree TOP
 ramp = N <$> (Ramp Nothing Nothing emptyV2) . table . fromLists . fmap (^..each) . ((:) ("pos", "r", "g", "b", "a")) . fmap ((over each) (BS.pack . show))
 
-switchTop :: Tree Float -> [Tree TOP] -> Tree TOP
-switchTop i = N <$> SwitchTOP i
+switchT :: Tree Float -> [Tree TOP] -> Tree TOP
+switchT i = N <$> SwitchTOP i
 
-selectTop :: Tree TOP -> Tree TOP
-selectTop = N <$> SelectTOP . Just
+selectT :: Tree TOP -> Tree TOP
+selectT = N <$> SelectTOP . Just
 
 
 -- -- COMPs

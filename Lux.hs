@@ -13,44 +13,42 @@ import Data.Matrix
 
 import qualified Data.ByteString.Char8 as BS
 
-finalout = outTop $ switchTop (chopChan0 $ invert held) [deckA, deckB]
+finalout = outT $ switchT (chopChan0 $ invert [held]) [deckA, deckB]
 
-secChop = constChop (floor seconds)
+secChop = constC [floor seconds]
 
-invert l = logic (logicPreop ?~ int 1) l
+invert l = logic' (logicPreop ?~ int 1) l
 
 movieIndA = hold movieInd held
-movieIndB = hold movieInd (invert held)
+movieIndB = hold movieInd (invert [held])
 
 movies = table $ transpose $ fromLists [moviesList]
 
 votes = table $ BS.pack . show <$> fromLists votesList
 
-deckA = movieFileIn <&> pars.moviePlayMode .~ Just (int 1) <&> pars.movieIndex .~ Just (frames !% int (60 * 60 * 3)) $
-  (cell ((floori $ chopChan0 movieIndA) !% int (length moviesList), int 0) movies)
+deckA = movieFileIn' ((moviePlayMode ?~ int 1) . (movieIndex ?~ (frames !% int (60 * 60 * 3)))) $
+  (cell ((casti $ floor $ chopChan0 movieIndA) !% int (length moviesList), int 0) movies)
 
-deckB = movieFileIn <&> pars.moviePlayMode .~ Just (int 1) <&> pars.movieIndex .~ Just (frames !% int (60 * 60 * 3)) $
-  (cell ((floori $ chopChan0 movieIndB) !% int (length moviesList), int 0) movies)
+deckB = movieFileIn' ((moviePlayMode ?~ int 1) . (movieIndex ?~ (frames !% int (60 * 60 * 3)))) $
+  (cell ((casti $ floor $ chopChan0 movieIndB) !% int (length moviesList), int 0) movies)
 
-noiseCount s v r = (countReset
-                  <&> (<&> pars.countThresh .~ Just (float 0.5)))
-                  (opsadd [v]) r
+noiseCount r s v = count' ((countThresh ?~ (float 0.5)) . (countReset ?~ r)) (math' opsadd [v])
 
--- (noiseChop & pars.noiseCTimeSlice .~ Just (B True) & pars.noiseCTranslate._1 .~ Just (float s) & pars.noiseCPeriod.~Just (float 0.3))
+-- (noiseChop & pars.noiseCTimeSlice ?~ (B True) & pars.noiseCTranslate._1 ?~ (float s) & pars.noiseCPeriod.~Just (float 0.3))
 
-noiseTrigger r s v = flip countReset r <&> pars.countThresh .~ Just (float 4) $ noiseCount s v r
+noiseTrigger r s v = count' ((countReset ?~ r) . (countThresh ?~ (float 4))) $ noiseCount r s v
 
-mergedTriggers r = fix "triggers" $ fan <&> pars.fanOp .~ (Just $ int 1) <&> pars.fanOffNeg .~ Just ptrue $ mergeChop $ zipWith (noiseTrigger r) [0, 2, 4] voteNums
+mergedTriggers r = fix "triggers" $ fan' ((fanOp .~ (Just $ int 1)) . (fanOffNeg ?~ bool True)) $ mergeC $ zipWith (noiseTrigger r) [0, 2, 4] voteNums
 
-trigfb = feedbackChop (constChop $ float 0) mergedTriggers (selectChop . opaddf 1)
+trigfb = feedbackC (constC [float 0]) mergedTriggers (math' (opaddf 1) . (:[]))
 
-voteResult = hold trigfb (opaddf 1 trigfb) & pars.logicPreop .~ Just (int 2) & pars.logicConvert .~ Just (int 3)
+voteResult = hold trigfb (math' (opaddf 1) [trigfb])
 
-movieInd = constChop $  cellf (casti $ chopChan0 currentVote, pmax 0 $ casti $ chopChan0 voteResult) votes
+movieInd = constC . (:[]) $ castf $ cell (casti $ chopChan0 currentVote, pmax (int 0) $ casti $ chopChan0 voteResult) votes
 
-held = logic movieInd & pars.logicPreop .~ Just (int 2) & pars.logicConvert .~ Just (int 3)
+held = logic' ((logicPreop ?~ (int 2)) . (logicConvert ?~ (int 3))) [movieInd]
 
-currentVote = count trigfb & pars.countLimType .~ Just (int 1) & pars.countLimMax .~ Just (float (fromIntegral (length votesList) - 1))
+currentVote = count' ((countLimType ?~ (int 1)) . (countLimMax ?~ (float (fromIntegral (length votesList) - 1)))) trigfb
 
 moviesList = map (\i -> BS.concat ["C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Anna - Copy (", BS.pack $ show i, ").mp4"]) [1..34]
   ++
@@ -65,15 +63,15 @@ votesList = [ [19, 34, 35]
             , [15, 34, 35]
             ]
 
-server = tcpipDat (fileDat "scripts/server.py") & pars.tcpipMode .~ Just (int 1) & pars.tcpipCallbackFormat .~ Just (int 2)
+server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2))) (fileD "scripts/server.py")
 
-peers = fix "myPeers" $ textDat ""
+peers = fix "myPeers" $ textD ""
 
-closepeer = fix "closePeer" $ textDat "args[0].close()"
+closepeer = fix "closePeer" $ textD "args[0].close()"
 
-website = fix "website" $ fileDat "scripts/website.html"
+website = fix "website" $ fileD "scripts/website.html"
 
-voteNums = zipWith (\i c -> fix (BS.pack $ "voteNum" ++ show i) c) [0..] [constChop (float 0), constChop (float 0), constChop (float 0)]
+voteNums = zipWith (\i c -> fix (BS.pack $ "voteNum" ++ show i) c) [0..] [constC [(float 0)], constC [(float 0)], constC [(float 0)]]
 
 go = do ms <- run [server, website, closepeer] mempty
         ms <- run voteNums ms

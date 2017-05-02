@@ -4,10 +4,8 @@ module Lib
 
 import Op
 import OSC
-import Tree
 
 import Control.Monad.Trans.State
-import Data.Trie
 import Sound.OSC
 import Sound.OSC.Transport.FD
 
