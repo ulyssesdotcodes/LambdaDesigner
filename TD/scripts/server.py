@@ -34,11 +34,11 @@ def receive(dat, rowIndex, message, bytes, peer):
             keyValue = i.split(': ')
             if len(keyValue) == 2:
                 header[keyValue[0]] = keyValue[1]
-        
+
         if header['GET'] == '/':
             sendHeader = getHeader(hType='default')
             peer.sendBytes(sendHeader)
-            website = op('website').text
+            website = op(dat.fetch('website', '/website')[1:]).text
             peer.sendBytes(website)
             op('closePeer').run(peer,delayFrames=1)
 
@@ -49,7 +49,7 @@ def receive(dat, rowIndex, message, bytes, peer):
             sendHello = json.dumps({'type':'system','message':'Hello from ' + app.product +'!'})
             packedMsg = encode(sendHello.encode('utf-8'))
             packedMsg = b''.join(packedMsg)
-            peer.sendBytes(sendHeader)  
+            peer.sendBytes(sendHeader)
             peer.sendBytes(packedMsg)
 
     else:

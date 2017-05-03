@@ -14,7 +14,6 @@ run tree state = do
   conn <- openUDP "127.0.0.1" 9002
   ms <- execStateT (mapM_ (\t -> do parseTree t) tree) state
   let msgs = makeMessages ms
-  mapM_ print msgs
   sendMessages conn msgs
   close conn
   return ms

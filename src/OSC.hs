@@ -41,6 +41,7 @@ instance Ord Message where
 
 parseParam :: (Monad m) => Tree a -> StateT Messages m ByteString
 parseParam t@(N p) = parseTree t >>= return . wrapOp
+parseParam t@(Comp {}) = parseTree t >>= return . wrapOp
 parseParam t@(FC {}) = parseTree t >>= return . wrapOp
 parseParam t@(FT {}) = parseTree t >>= return . wrapOp
 parseParam t@(Fix {}) = parseTree t >>= return . wrapOp
@@ -51,6 +52,13 @@ wrapOp op = BS.concat ["op(\"", BS.tail op, "\")"]
 
 parseTree :: (Monad m) => Tree a -> StateT Messages m ByteString
 parseTree (N p) = opsMessages p
+parseTree (Comp p child) = do addr <- opsMessages p
+                              tr <- execStateT (parseTree child) T.empty
+                              let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
+                                  modMsg (m:ms) = m:(modMsg ms)
+                                  modMsg [] = []
+                              modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
+                              return addr
 parseTree (FC fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectCHOP Nothing)) messages
                                          laddr <- parseTree (loop $ N $ fpars & chopIns .~ [sel $ N (SelectCHOP Nothing), reset])
@@ -72,8 +80,8 @@ parseTree (Fix name op) = do messages <- get
                                            return name'
 
 parseTree (PyExpr s) = pure s
-parseTree (ChopChan i c) = do addr <- parseParam c
-                              return $ BS.concat [addr, "[", pack $ show i, "]"]
+parseTree (ChopChan n c) = do addr <- parseParam c
+                              return $ BS.concat [addr, "[", n, "]"]
 parseTree (Cell (r, c) t) = do addr <- parseParam t
                                r' <- parseParam r
                                c' <- parseParam c

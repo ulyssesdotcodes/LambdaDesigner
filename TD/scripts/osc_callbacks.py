@@ -17,59 +17,14 @@
 #   peer.port       #network port associated with the peer
 #
 
-classes = {
-  'chopToTop' : (choptoTOP, 'chopto', 'TOP'),
-  'circleTop' : (circleTOP, 'circle', 'TOP'),
-  'compositeTop' : (compositeTOP, 'comp', 'TOP'),
-  'displace' : (displaceTOP, 'displace', 'TOP'),
-  'feedbackTop' : (feedbackTOP, 'feedback', 'TOP'),
-  'movieFileIn' : (moviefileinTOP, 'moviefilein', 'TOP'),
-  'outTop' : (outTOP, 'out', 'TOP'),
-  'nullTop' : (outTOP, 'null', 'TOP'),
-  'render' : (renderTOP, 'render', 'TOP'),
-  'levelTop' : (levelTOP, 'level', 'TOP'),
-  'transform' : (transformTOP, 'transform', 'TOP'),
-  'noiseTop' : (noiseTOP, 'noise', 'TOP'),
-  'ramp' : (rampTOP, 'ramp', 'TOP'),
-  'switchTop' : (switchTOP, 'switch', 'TOP'),
-  'selectTop' : (selectTOP, 'select', 'TOP'),
-
-  'constantChop' : (constantCHOP, 'constant', 'CHOP'),
-  'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
-  'hold' : (holdCHOP, 'hold', 'CHOP'),
-  'logic' : (logicCHOP, 'logic', 'CHOP'),
-  'noiseChop' : (noiseCHOP, 'noise', 'CHOP'),
-  'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
-  'selectChop' : (selectCHOP, 'select', 'CHOP'),
-  'count' : (countCHOP, 'count', 'CHOP'),
-  'fan' : (fanCHOP, 'fan', 'CHOP'),
-  'mergeChop' : (mergeCHOP, 'merge', 'CHOP'),
-  'math' : (mathCHOP, 'math', 'CHOP'),
-
-  'chopToSop' : (choptoSOP, 'chopto', 'SOP'),
-  'circleSop' : (circleSOP, 'circle', 'SOP'),
-  'noiseSop' : (noiseSOP, 'noise', 'SOP'),
-  'outSop' : (outSOP, 'out', 'SOP'),
-  'sphere' : (sphereSOP, 'sphere', 'SOP'),
-
-  'constMat' : (constantMAT, 'constant', 'MAT'),
-
-  'chopExec' : (chopexecuteDAT, 'chopexecute', 'DAT'),
-  'table' : (tableDAT, 'table', 'DAT'),
-  'textDat' : (textDAT, 'text', 'DAT'),
-  'tcpip' : (tcpipDAT, 'tcpip', 'DAT'),
-
-  'camera' : (cameraCOMP, 'cam', 'COMP'),
-  'geo' : (geometryCOMP, 'geo', 'COMP'),
-  'light' : (lightCOMP, 'light', 'COMP')
-}
+import scripts
 
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
   global classes
 
   addr = "/project1/lambda" + address
   if args[0] == "create":
-    clazz = classes.get(args[1], 'none')
+    clazz = scripts.getClass(args[1])
     if clazz == "none":
       print("Couldn't find " + args[1])
       return
