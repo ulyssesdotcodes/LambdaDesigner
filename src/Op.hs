@@ -80,6 +80,9 @@ data CHOP = ConstantCHOP { _values :: [Tree Float]
           | SelectCHOP { _selectCChop :: Maybe (Tree CHOP)
                        }
           | SOPToCHOP { _sopToChopSop :: Tree SOP }
+          | SwitchCHOP { _switchCIndex :: Tree Int
+                       , _chopIns :: [Tree CHOP]
+                       }
           | Timer { _timerSegments :: Maybe (Tree DAT)
                   , _timerShowSeg :: Maybe (Tree Bool)
                   , _timerShowRunning :: Maybe (Tree Bool)
@@ -204,6 +207,7 @@ data Tree a where
   PyExpr :: ByteString -> Tree a
   ChopChan :: ByteString -> Tree CHOP -> Tree Float
   Cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree ByteString
+  NumRows :: Tree DAT -> Tree Int
   Mod :: (Num n) => (ByteString -> ByteString) -> Tree n -> Tree n
   Mod2 :: (Num n) => (ByteString -> ByteString -> ByteString) -> Tree n -> Tree n -> Tree n
   Cast :: (Num b) => (ByteString -> ByteString) -> Tree a -> Tree b
@@ -252,6 +256,9 @@ chopChan0 = ChopChan (pack . show $ 0)
 
 chopChanName :: String -> Tree CHOP -> Tree Float
 chopChanName s = ChopChan (pack $ "\"" ++ s ++ "\"")
+
+numRows :: Tree DAT -> Tree Int
+numRows = NumRows
 
 type Vec2 = (Maybe (Tree Float), Maybe (Tree Float))
 type Vec3 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
@@ -312,6 +319,7 @@ instance Op CHOP where
                                       ] ++ chopBasePars n
   pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", Resolve s)] ++ chopBasePars n
+  pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
   pars n@(Timer {..}) = catMaybes [("segdat",) . ResolveP <$> _timerSegments
                                   , ("outseg" <$$> _timerShowSeg)
                                   , ("outrunning" <$$> _timerShowSeg)
@@ -328,6 +336,7 @@ instance Op CHOP where
   opType (Math {}) = "math"
   opType (NoiseCHOP {}) = "noiseChop"
   opType (OutCHOP {}) = "outChop"
+  opType (SwitchCHOP {}) = "switchChop"
   opType (SelectCHOP _) = "selectChop"
   opType (SOPToCHOP _) = "sopToChop"
   opType (Timer {}) = "timer"
@@ -535,6 +544,9 @@ sopToC = N <$> SOPToCHOP
 
 selectC :: Tree CHOP -> Tree CHOP
 selectC = N <$> SelectCHOP . Just
+
+switchC :: Tree Int -> [Tree CHOP] -> Tree CHOP
+switchC i = N <$> SwitchCHOP i
 
 data TimerSegment = TimerSegment { segDelay :: Float
                                  , segLength :: Float

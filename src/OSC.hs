@@ -99,6 +99,8 @@ parseTree (Cell (r, c) t) = do addr <- parseParam t
                                r' <- parseParam r
                                c' <- parseParam c
                                return $ BS.concat [addr, "[", r', ",", c', "]"]
+parseTree (NumRows t) = do addr <- parseParam t
+                           return $ BS.concat [addr, ".numRows"]
 parseTree (Mod f ta) = do aaddr <- parseParam ta
                           return . f $ aaddr
 parseTree (Mod2 f ta tb) = do aaddr <- parseParam ta

@@ -43,12 +43,11 @@ voteCount r v = count' ((countThresh ?~ (float 0.5)) . (countReset ?~ r) . (coun
 -- (noiseChop & pars.noiseCTimeSlice ?~ (B True) & pars.noiseCTranslate._1 ?~ (float s) & pars.noiseCPeriod.~Just (float 0.3))
 -- noiseTrigger r s v = count' ((countReset ?~ r) . (countThresh ?~ (float 4))) $ noiseCount r s v
 
-maxVote = fix "triggers" $
-    fan' ((fanOp .~ (Just $ int 1)) . (fanOffNeg ?~ bool True)) $
-      math' ((mathCombChops ?~ (int 4)) . (mathInt ?~ (int 2)))
-        [ mergeC $ voteCount (constC [voteEnabled]) <$> voteNums
-        , math' (mathCombChops ?~ (int 7)) $ voteCount (constC [voteEnabled]) <$> voteNums
-        ]
+maxVote = fan' ((fanOp .~ (Just $ int 1)) . (fanOffNeg ?~ bool False)) $
+            math' ((mathCombChops ?~ (int 4)) . (mathInt ?~ (int 2)))
+              [ mergeC $ voteCount (constC [voteEnabled]) <$> voteNums
+              , math' (mathCombChops ?~ (int 7)) $ voteCount (constC [voteEnabled]) <$> voteNums
+              ]
 
 -- maxVote' = feedbackC (constC [float 0]) (voteEnabled) (math' (opaddf 1) . (:[]))
 
@@ -82,8 +81,8 @@ votes = table $ fromLists votesList
 currentVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer) !+ (float (-1)))) votes
 
 movieVote = selectD' (selectDRExpr ?~ PyExpr "re.match('movie',me.inputCell.val) != None") currentVote
-movieInd' = constC . (:[]) $ castf $ cell ((int 0), casti $ chopChan0 maxVote !+ float 1) movieVote
-movieInd = feedbackC (constC [float 0]) (\m -> hold (mergeC' (mergeCDupes ?~ int 1) [movieInd',  m]) (invert $ [constC [voteEnabled]])) id
+movieInd' = constC . (:[]) $ castf $ cell ((int 0), casti (chopChan0 maxVote) !+ int 1) movieVote
+movieInd = feedbackC (constC [float 0]) (\m -> hold (switchC (numRows movieVote) [m, movieInd']) (invert $ [constC [voteEnabled]])) id
 
 effects = [ fix "fade" $ N $ LevelTOP (Just $ float 0.3) []
           , fix "vanish" $ N $ LevelTOP (Just $ float 0) []
@@ -93,7 +92,10 @@ effects = [ fix "fade" $ N $ LevelTOP (Just $ float 0.3) []
 effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") currentVote
 effectRunner t = datExec' ((datVars .~ [("base", Resolve finalout), ("voteResult", Resolve maxVote)]) . (deTableChange ?~ t)) effectVote
 
-server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)) . (datVars .~ [("website", Resolve website)] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums)) (fileD "scripts/server.py")
+server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)) . (datVars .~ [("website", Resolve website), ("timer", Resolve voteTimer)] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums))
+            (fix "server" $ fileD' (datVars .~ [("timer", Resolve voteTimer)]) "scripts/server.py")
+
+sendServer = datExec' (deTableChange ?~ "  mod.server.updateVotes(dat[0, 1].val, dat[0,2].val, dat[0,3].val)") currentVote
 
 peers = fix "myPeers" $ textD ""
 
@@ -114,7 +116,7 @@ voteTimer = timerSeg' ((timerShowSeg ?~ bool True)) [ TimerSegment 5 8
 -- votesExec = (deTableChange ?~ "print(dat[0,0])") $ selectD' (selectDRI ?~ casti (chopChanName "segment" voteTimer)) votes
 
 
-go = do ms <- run [server, closepeer] mempty
+go = do ms <- run [server, closepeer, sendServer] mempty
         eft <- BS.readFile "TD/scripts/effectChangeScript.py"
         ms <- run effects ms
         ms <- run [effectRunner eft] ms

@@ -22,7 +22,6 @@ import json
 def receive(dat, rowIndex, message, bytes, peer):
     peerList = me.fetch('peerList',{})
 
-
     if message.startswith('GET '):
         fullMsg = bytes.decode("utf-8")
         msgList = [s for s in fullMsg.splitlines() if s]
@@ -56,10 +55,14 @@ def receive(dat, rowIndex, message, bytes, peer):
         fullMsg = unpack_frame(bytes)
         try:
             payload = eval(fullMsg['payload'])
-            voteNum = payload.get('votenum',None)
-            voteNumOp = op(dat.fetch("vote" + str(voteNum), "--")[1:])
-            if voteNumOp:
-              voteNumOp.par.value0.pulse(1, frames=2)
+            if payload.get('type') == "vote":
+              voteNum = payload.get('votenum',None)
+              voteNumOp = op(dat.fetch("vote" + str(voteNum), "--")[1:])
+              if voteNumOp:
+                voteNumOp.par.value0.pulse(1, frames=2)
+            elif payload.get('type') == "start":
+              print(me.fetch('timer', '--')[1:])
+              op(me.fetch('timer', '--')[1:]).par.start.pulse()
         except:
             if fullMsg['payload'] == b'\x03\xe9':
                 peerList.pop(peer.port,None)
@@ -68,9 +71,9 @@ def receive(dat, rowIndex, message, bytes, peer):
 
     return
 
-def sendAMessage(message):
-    peerList = op('myPeers').fetch('peerList')
-    returnMsg = json.dumps({'type':'system','message':message})
+def updateVotes(v1, v2, v3):
+    peerList = me.fetch('peerList')
+    returnMsg = json.dumps({'type': 'voteChange', 'vote1':v1, 'vote2':v2, 'vote3':v3})
     packedMsg = encode(returnMsg.encode('utf-8'))
     packedMsg = b''.join(packedMsg)
     for port in peerList:

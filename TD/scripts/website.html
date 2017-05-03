@@ -51,18 +51,38 @@ $(document).ready(function(){
   $(".vote").click(function(e){ //use clicks message send button	
 		//prepare json data
 		var msg = {
+      type: 'vote',
 		  votenum: $(e.target).data('votenum')
 		};
 
 		//convert and send data to server
 		websocket.send(JSON.stringify(msg));
 	});
+
+  $(".start").click(function(e) {
+    var msg = {
+      type: 'start'
+    }
+    websocket.send(JSON.stringify(msg));
+  });
+
+  websocket.onmessage = function(event) {
+    var msg = JSON.parse(event.data);
+    switch(msg.type) {
+      case 'voteChange':
+        var votes = $('.vote')
+        $(votes[0]).html(msg.vote1);
+        $(votes[1]).html(msg.vote2);
+        $(votes[2]).html(msg.vote3);
+    }
+  }
 	
 	websocket.onerror	= function(ev){$('#message_box').append("<div class=\"system_error\">Error Occurred - "+ev.data+"</div>");}; 
 	websocket.onclose 	= function(ev){$('#message_box').append("<div class=\"system_msg\">Connection Closed</div>");}; 
 });
 </script>
 
+<button class="start">Start</button>
 <button class="vote" data-votenum="0"> Vote 1 </button>
 <button class="vote" data-votenum="1"> Vote 2 </button>
 <button class="vote" data-votenum="2"> Vote 3 </button>

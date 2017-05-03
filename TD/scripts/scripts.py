@@ -29,6 +29,7 @@ classes = {
   'noiseChop' : (noiseCHOP, 'noise', 'CHOP'),
   'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
   'selectChop' : (selectCHOP, 'select', 'CHOP'),
+  'switchChop' : (switchCHOP, 'switch', 'CHOP'),
   'timer' : (timerCHOP, 'timer', 'CHOP'),
 
   'chopToSop' : (choptoSOP, 'chopto', 'SOP'),
