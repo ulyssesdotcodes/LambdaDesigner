@@ -17,14 +17,12 @@
 #   peer.port       #network port associated with the peer
 #
 
-import scripts
-
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
   global classes
 
   addr = "/project1/lambda" + address
   if args[0] == "create":
-    clazz = scripts.getClass(args[1])
+    clazz = classes.get(args[1], 'none')
     if clazz == "none":
       print("Couldn't find " + args[1])
       return

@@ -79,7 +79,8 @@ votes = table $ fromLists votesList
 currentVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer) !+ (float (-1)))) votes
 effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") currentVote
 movieVote = selectD' (selectDRExpr ?~ PyExpr "re.match('movie',me.inputCell.val) != None") currentVote
-movieInd = constC . (:[]) $ castf $ cell ((int 0), casti $ chopChan0 maxVote !+ float 1) movieVote
+movieInd' = constC . (:[]) $ castf $ cell ((int 0), casti $ chopChan0 maxVote !+ float 1) movieVote
+movieInd = feedbackC (constC [float 0]) (\m -> hold (mergeC' (mergeCDupes ?~ int 1) [movieInd',  m]) (invert $ [constC [voteEnabled]])) id
 
 
 server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)) . (datVars .~ [("website", Resolve website)] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums)) (fileD "scripts/server.py")
@@ -92,12 +93,12 @@ website = fileD "scripts/website.html"
 
 voteNums = zipWith (\i c -> fix (BS.pack $ "voteNum" ++ show i) c) [0..] [constC [(float 0)], constC [(float 0)], constC [(float 0)]]
 
-voteTimer = timerSeg' ((timerShowSeg ?~ bool True)) [ TimerSegment 1 2
-                                                    , TimerSegment 5 6
-                                                    , TimerSegment 6 3
-                                                    , TimerSegment 30 120
-                                                    , TimerSegment 90 30
-                                                    , TimerSegment 10 30
+voteTimer = timerSeg' ((timerShowSeg ?~ bool True)) [ TimerSegment 5 8
+                                                    , TimerSegment 5 8
+                                                    , TimerSegment 5 8
+                                                    , TimerSegment 5 8
+                                                    , TimerSegment 5 8
+                                                    , TimerSegment 5 8
                                                     ]
 
 votesExec = datExec' (deTableChange ?~ "print(dat[0,0])") $ selectD' (selectDRI ?~ casti (chopChanName "segment" voteTimer)) votes

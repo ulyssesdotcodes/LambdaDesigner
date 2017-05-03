@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE RecursiveDo #-}
 
 module OSC where
 
@@ -61,8 +62,9 @@ parseTree (Comp p child) = do addr <- opsMessages p
                               return addr
 parseTree (FC fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectCHOP Nothing)) messages
-                                         laddr <- parseTree (loop $ N $ fpars & chopIns .~ [sel $ N (SelectCHOP Nothing), reset])
-                                         modify $ T.adjust ((:) (Parameter "chop" $ wrapOp laddr)) $ saddr
+                                         let sname = BS.append "fb_" $ BS.tail saddr
+                                         laddr <- parseTree (loop $ N $ fpars & chopIns .~ [sel $ fix sname $ N (SelectCHOP Nothing), reset])
+                                         modify $ T.adjust ((:) (Parameter "chop" $ wrapOp laddr)) $ BS.append "/" sname
                                          return laddr
 parseTree (FT fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectTOP Nothing)) messages

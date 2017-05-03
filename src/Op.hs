@@ -62,7 +62,9 @@ data CHOP = ConstantCHOP { _values :: [Tree Float]
                  , _mathInt :: Maybe (Tree Int)
                  , _chopIns :: [Tree CHOP]
                  }
-          | MergeCHOP { _chopIns :: [Tree CHOP] }
+          | MergeCHOP { _mergeCDupes :: Maybe (Tree Int)
+                      , _chopIns :: [Tree CHOP]
+                      }
           | NoiseCHOP { _chopTimeSlice :: Maybe (Tree Bool)
                       , _noiseCTranslate :: Vec3
                       , _noiseCRoughness :: Maybe (Tree Float)
@@ -275,14 +277,7 @@ makeLenses ''Geo
 makeLenses ''Light
 
 instance Op CHOP where
-  pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
-                                      , "type" <$$> _noiseCType
-                                      , "period" <$$> _noiseCPeriod
-                                      ] ++ chopBasePars n
-  pars n@(SOPToCHOP s) = [("sop", Resolve s)] ++ chopBasePars n
-  pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
   pars n@(ConstantCHOP v) = L.zipWith (\i v' -> (BS.pack $ "value" ++ show i, Resolve v')) [0..] v ++ chopBasePars n
-  pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
   pars n@(Count {..}) = catMaybes [ "threshup" <$$> _countThresh
                                   , "output" <$$> _countLimType
                                   , "limitmin" <$$> _countLimMin
@@ -290,7 +285,15 @@ instance Op CHOP where
                                   , "resetcondition" <$$> _countResetCondition
                                   ] ++ chopBasePars n
   pars n@(Fan o off _) = catMaybes ["fanop" <$$> o, "alloff" <$$> off] ++ chopBasePars n
+  pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
   pars n@(Math a c i _) = catMaybes ["preoff" <$$> a, "chopop" <$$> c, "integer" <$$> i] ++ chopBasePars n
+  pars n@(MergeCHOP {..}) = catMaybes [("duplicate" <$$> _mergeCDupes)] ++ chopBasePars n
+  pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
+                                      , "type" <$$> _noiseCType
+                                      , "period" <$$> _noiseCPeriod
+                                      ] ++ chopBasePars n
+  pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
+  pars n@(SOPToCHOP s) = [("sop", Resolve s)] ++ chopBasePars n
   pars n@(Timer {..}) = catMaybes [("segdat",) . ResolveP <$> _timerSegments
                                   , ("outseg" <$$> _timerShowSeg)
                                   , ("outrunning" <$$> _timerShowSeg)
@@ -303,7 +306,7 @@ instance Op CHOP where
   opType (SelectCHOP _) = "selectChop"
   opType (Count {}) = "count"
   opType (Fan {}) = "fan"
-  opType (MergeCHOP _) = "mergeChop"
+  opType (MergeCHOP {}) = "mergeChop"
   opType (Math {}) = "math"
   opType (ConstantCHOP {}) = "constantChop"
   opType (NoiseCHOP {}) = "noiseChop"
@@ -461,8 +464,9 @@ logic' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
 
-mergeC :: [Tree CHOP] -> Tree CHOP
-mergeC = N <$> MergeCHOP
+mergeC' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
+mergeC' f = N . f <$> MergeCHOP Nothing
+mergeC = mergeC' id
 
 math' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 math' f = N <$> f . Math Nothing Nothing Nothing
