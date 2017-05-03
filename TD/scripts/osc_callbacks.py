@@ -46,7 +46,7 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
       op(addr + "/torus1").destroy()
 
   elif args[0] == "connect" and op(addr):
-    op(addr).inputConnectors[args[1]].connect(op("/project1/lambda" + args[2]))
+    op("/project1/lambda" + args[2]).outputConnectors[0].connect(op(addr).inputConnectors[args[1]])
 
   elif args[0] == "parameter" and op(addr):
     pars = op(addr).pars(args[1])

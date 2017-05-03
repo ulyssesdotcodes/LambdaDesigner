@@ -5,8 +5,9 @@ classes = {
   'displace' : (displaceTOP, 'displace', 'TOP'),
   'feedbackTop' : (feedbackTOP, 'feedback', 'TOP'),
   'movieFileIn' : (moviefileinTOP, 'moviefilein', 'TOP'),
-  'outTop' : (outTOP, 'out', 'TOP'),
+  'inTop' : (inTOP, 'in', 'TOP'),
   'nullTop' : (outTOP, 'null', 'TOP'),
+  'outTop' : (outTOP, 'out', 'TOP'),
   'render' : (renderTOP, 'render', 'TOP'),
   'levelTop' : (levelTOP, 'level', 'TOP'),
   'transform' : (transformTOP, 'transform', 'TOP'),
@@ -21,8 +22,10 @@ classes = {
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
   'hold' : (holdCHOP, 'hold', 'CHOP'),
   'logic' : (logicCHOP, 'logic', 'CHOP'),
+  'inChop' : (inCHOP, 'in', 'CHOP'),
   'math' : (mathCHOP, 'math', 'CHOP'),
   'mergeChop' : (mergeCHOP, 'merge', 'CHOP'),
+  'outChop' : (outCHOP, 'out', 'CHOP'),
   'noiseChop' : (noiseCHOP, 'noise', 'CHOP'),
   'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),
   'selectChop' : (selectCHOP, 'select', 'CHOP'),
@@ -31,13 +34,18 @@ classes = {
   'chopToSop' : (choptoSOP, 'chopto', 'SOP'),
   'circleSop' : (circleSOP, 'circle', 'SOP'),
   'noiseSop' : (noiseSOP, 'noise', 'SOP'),
+  'inSop' : (inSOP, 'in', 'SOP'),
   'outSop' : (outSOP, 'out', 'SOP'),
   'sphere' : (sphereSOP, 'sphere', 'SOP'),
 
+  'inMat' : (inMAT, 'in', 'MAT'),
+  'outMat' : (outMAT, 'out', 'MAT'),
   'constMat' : (constantMAT, 'constant', 'MAT'),
 
   'chopExec' : (chopexecuteDAT, 'chopexecute', 'DAT'),
   'datExec' : (datexecuteDAT, 'datexecute', 'DAT'),
+  'inDat' : (inDAT, 'in', 'DAT'),
+  'outDat' : (outDAT, 'out', 'DAT'),
   'selectDat' : (selectDAT, 'select', 'DAT'),
   'table' : (tableDAT, 'table', 'DAT'),
   'textDat' : (textDAT, 'text', 'DAT'),
@@ -45,7 +53,8 @@ classes = {
 
   'camera' : (cameraCOMP, 'cam', 'COMP'),
   'geo' : (geometryCOMP, 'geo', 'COMP'),
-  'light' : (lightCOMP, 'light', 'COMP')
+  'light' : (lightCOMP, 'light', 'COMP'),
+  'base' : (baseCOMP, 'base', 'COMP')
 }
 
 def getClass(opname, default):

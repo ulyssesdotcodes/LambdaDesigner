@@ -60,6 +60,17 @@ parseTree (Comp p child) = do addr <- opsMessages p
                                   modMsg [] = []
                               modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
                               return addr
+parseTree (BComp p f a) = do addr <- opsMessages p
+                             aaddr <- parseTree a
+                             let inNode = inOp
+                                 outNode = outOp
+                             tr <- execStateT (parseTree $ outNode $ f inNode) T.empty
+                             let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
+                                 modMsg (m:ms) = m:(modMsg ms)
+                                 modMsg [] = []
+                             modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
+                             modify $ T.adjust ((:) (Connect 0 aaddr)) addr
+                             return addr
 parseTree (FC fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectCHOP Nothing)) messages
                                          let sname = BS.append "fb_" $ BS.tail saddr

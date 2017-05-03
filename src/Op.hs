@@ -22,6 +22,9 @@ import Data.List as L
 data CommandType = Pulse ByteString ByteString Int
                  | Store ByteString (Tree ByteString)
 
+class (Op a) => Baseable a where
+  inOp :: Tree a
+  outOp :: Tree a -> Tree a
 
 class Op a where
   connections :: a -> [Tree a]
@@ -53,6 +56,7 @@ data CHOP = ConstantCHOP { _values :: [Tree Float]
                          }
           | Hold { _chopIns :: [Tree CHOP]
                  }
+          | InCHOP
           | Logic { _logicPreop :: Maybe (Tree Int)
                   , _logicConvert :: Maybe (Tree Int)
                   , _chopIns :: [Tree CHOP]
@@ -71,6 +75,8 @@ data CHOP = ConstantCHOP { _values :: [Tree Float]
                       , _noiseCType :: Maybe (Tree Int)
                       , _noiseCPeriod :: Maybe (Tree Float)
                       }
+          | OutCHOP { _chopIns :: [Tree CHOP]
+                    }
           | SelectCHOP { _selectCChop :: Maybe (Tree CHOP)
                        }
           | SOPToCHOP { _sopToChopSop :: Tree SOP }
@@ -90,6 +96,9 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                    , _deTableChange :: Maybe BS.ByteString
                    , _datVars :: [(ByteString, Tree ByteString)]
                    }
+         | InDAT
+         | OutDAT { _datIns :: [Tree DAT]
+                  }
          | SelectDAT { _selectDRI :: Maybe (Tree Int)
                      , _selectDRStartI :: Maybe (Tree Int)
                      , _selectDREndI :: Maybe (Tree Int)
@@ -116,6 +125,7 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
          | CircleSOP { _circType :: Maybe (Tree Int)
                      , _circArc :: Maybe (Tree Int)
                      }
+         | InSOP
          | NoiseSOP { _noiseSTranslate :: Vec3
                     , _sopIns :: [Tree SOP]
                     }
@@ -134,6 +144,7 @@ data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
            | LevelTOP { _levelOpacity :: Maybe (Tree Float)
                       , _topIns :: [Tree TOP]
                       }
+           | InTOP
            | MovieFileIn { _movieFileInFile :: Tree BS.ByteString
                          , _moviePlayMode :: Maybe (Tree Int)
                          , _movieIndex :: Maybe (Tree Int)
@@ -166,6 +177,9 @@ data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
 data MAT = ConstantMAT { _constColor :: Vec3
                        , _constAlpha :: Maybe (Tree Float)
                        }
+         | InMAT
+         | OutMAT { _matIns :: [Tree MAT]
+                  }
 
 data Geo = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
@@ -176,6 +190,8 @@ data Geo = Geo { _geoTranslate :: Vec3
 data Camera = Camera { _camTranslate :: Vec3
                      }
 
+data BaseCOMP = BaseCOMP
+
 data Light = Light
 
 data Tree a where
@@ -183,6 +199,7 @@ data Tree a where
   FC :: CHOP -> Tree CHOP -> (Tree CHOP -> Tree CHOP) -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
   FT :: TOP -> Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP) -> Tree TOP
   Comp :: (Op a, Op b) => a -> Tree b -> Tree a
+  BComp :: (Baseable a, Baseable b) => BaseCOMP -> (Tree a -> Tree b) -> Tree a -> Tree b
   Fix :: (Op a) => ByteString -> Tree a -> Tree a
   PyExpr :: ByteString -> Tree a
   ChopChan :: ByteString -> Tree CHOP -> Tree Float
@@ -300,21 +317,27 @@ instance Op CHOP where
                                   , ("outrunning" <$$> _timerShowSeg)
                                   ] ++ chopBasePars n
   pars _ = []
-  opType (SOPToCHOP _) = "sopToChop"
-  opType (Logic {}) = "logic"
-  opType (Hold {}) = "hold"
-  opType (FeedbackCHOP _) = "feedbackChop"
-  opType (SelectCHOP _) = "selectChop"
+  opType (ConstantCHOP {}) = "constantChop"
   opType (Count {}) = "count"
   opType (Fan {}) = "fan"
+  opType (FeedbackCHOP _) = "feedbackChop"
+  opType (Hold {}) = "hold"
+  opType (InCHOP {}) = "inChop"
+  opType (Logic {}) = "logic"
   opType (MergeCHOP {}) = "mergeChop"
   opType (Math {}) = "math"
-  opType (ConstantCHOP {}) = "constantChop"
   opType (NoiseCHOP {}) = "noiseChop"
+  opType (OutCHOP {}) = "outChop"
+  opType (SelectCHOP _) = "selectChop"
+  opType (SOPToCHOP _) = "sopToChop"
   opType (Timer {}) = "timer"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
   commands _ = []
   connections (maybeToList . flip (^?) chopIns -> cs) = mconcat cs
+
+instance Baseable CHOP where
+  inOp = N $ InCHOP
+  outOp o = N $ OutCHOP [o]
 
 instance Op DAT where
   pars (ChopExec chop offon won onoff woff vc ) = ("chop", ResolveP chop):(catMaybes [ ("offtoon",) . PyExpr <$> offon
@@ -343,6 +366,8 @@ instance Op DAT where
   pars _ = []
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opType (DatExec {}) = "datExec"
+  opType (InDAT {}) = "inDat"
+  opType (OutDAT {}) = "outDat"
   opType (SelectDAT {}) = "selectDat"
   opType (TextDAT {}) = "textDat"
   opType (Table _) = "table"
@@ -365,11 +390,20 @@ instance Op DAT where
   commands (TextDAT _ f cs) = (maybeToList $ const (Pulse "loadonstartpulse" "1" 1) <$> f) ++ (uncurry Store <$> cs)
   commands (DatExec {..}) = [Pulse "active" "0" 2] ++ (uncurry Store <$> _datVars)
   commands ((view datVars) -> tvs) = uncurry Store <$> tvs
-  --connections (maybeToList . flip (^?) datIns -> cs) = mconcat cs
+  connections (maybeToList . flip (^?) datIns -> cs) = mconcat cs
+
+instance Baseable DAT where
+  inOp = N $ InDAT
+  outOp o = N $ OutDAT [o]
 
 instance Op MAT where
   pars (ConstantMAT rgb alpha) = catMaybes [("alpha" <$$> alpha)] ++ rgbMap "color" rgb
   opType (ConstantMAT _ _) = "constMat"
+  connections (maybeToList . flip (^?) matIns -> cs) = mconcat cs
+
+instance Baseable MAT where
+  inOp = N $ InMAT
+  outOp o = N $ OutMAT [o]
 
 instance Op SOP where
   pars (CircleSOP p a) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
@@ -377,14 +411,19 @@ instance Op SOP where
   pars (CHOPToSOP c a) = ("chop", Resolve c):(catMaybes [("attscope" <$$> a)])
   pars _ = []
   opType (CircleSOP _ _) = "circleSop"
+  opType (InSOP {}) = "inSop"
   opType (NoiseSOP {}) = "noiseSop"
   opType (OutSOP {}) = "outSop"
   opType Sphere = "sphere"
   opType (CHOPToSOP _ _) = "chopToSop"
   connections (maybeToList . flip (^?) sopIns -> cs) = mconcat cs
 
+instance Baseable SOP where
+  inOp = N $ InSOP
+  outOp o = N $ OutSOP [o]
+
 instance Op TOP where
-  pars (CHOPToTOP chop) = [("chop", Resolve chop)]
+  pars (CHOPToTOP chop) = [("chop", ResolveP chop)]
   pars (CompositeTOP op _) = [("operand", Resolve op)]
   pars (MovieFileIn file mode index) = ("file", file): (catMaybes [("playmode" <$$> mode) , ("index" <$$> index)])
   -- pars (Render geo cam light) = fromListMaybe [ ("geometry", Just $ Resolve geo)
@@ -402,6 +441,7 @@ instance Op TOP where
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP {}) = "compositeTop"
   opType (Displace {}) = "displace"
+  opType (InTOP {}) = "inTop"
   opType (MovieFileIn _ _ _) = "movieFileIn"
   -- opType (Render _ _ _) = "render"
   opType (Transform {}) = "transform"
@@ -417,6 +457,10 @@ instance Op TOP where
   opType (SelectTOP _) = "selectTop"
   connections (maybeToList . flip (^?) topIns -> cs) = mconcat cs
 
+instance Baseable TOP where
+  inOp = N $ InTOP
+  outOp o = N $ OutTOP [o]
+
 instance Op Geo where
   opType (Geo _ _ _ _) = "geo"
   pars (Geo t s m us) = mconcat [catMaybes [("material",) . ResolveP <$> m, ("scale" <$$> us)], (vec3Map' "t" t), (vec3Map' "s" s)]
@@ -427,6 +471,9 @@ instance Op Camera where
 
 instance Op Light where
   opType Light = "light"
+
+instance Op BaseCOMP where
+  opType BaseCOMP = "base"
 
 -- Constructors
 
@@ -589,8 +636,8 @@ transformT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 transformT' f = N <$> f . (Transform emptyV2 emptyV2) . (:[])
 transformT = transformT' id
 
-nullTop :: Tree TOP -> Tree TOP
-nullTop = N . NullTOP . (:[])
+nullT :: Tree TOP -> Tree TOP
+nullT = N . NullTOP . (:[])
 
 levelT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 levelT' f = N <$> f. LevelTOP Nothing . (:[])
@@ -619,3 +666,6 @@ cam = cam' id
 
 light :: Tree Light
 light = N Light
+
+base :: (Baseable a, Baseable b) => (Tree a -> Tree b) -> Tree a -> Tree b
+base = BComp BaseCOMP
