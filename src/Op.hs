@@ -19,7 +19,7 @@ import Data.Maybe
 import Data.ByteString.Char8 as BS
 import Data.List as L
 
-data CommandType = Pulse ByteString
+data CommandType = Pulse ByteString ByteString Int
                  | Store ByteString (Tree ByteString)
 
 
@@ -88,6 +88,7 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                     }
          | DatExec { _datExecDat :: Tree DAT
                    , _deTableChange :: Maybe BS.ByteString
+                   , _datVars :: [(ByteString, Tree ByteString)]
                    }
          | SelectDAT { _selectDRI :: Maybe (Tree Int)
                      , _selectDRStartI :: Maybe (Tree Int)
@@ -311,7 +312,7 @@ instance Op CHOP where
   opType (ConstantCHOP {}) = "constantChop"
   opType (NoiseCHOP {}) = "noiseChop"
   opType (Timer {}) = "timer"
-  commands (Count {}) = [Pulse "reset"]
+  commands (Count {}) = [Pulse "resetpulse" "1" 1]
   commands _ = []
   connections (maybeToList . flip (^?) chopIns -> cs) = mconcat cs
 
@@ -358,10 +359,11 @@ instance Op DAT where
     where
       concatFunc (name, body) = BS.append (makec name) body
       makec prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev): \n"]
-  text (DatExec _ tc) = Just . BS.intercalate "\n\n" $ catMaybes [ BS.append "def tableChange(dat):\n\t" <$> tc]
+  text (DatExec {..}) = Just . BS.intercalate "\n\n" $ catMaybes [ BS.append "def tableChange(dat):\n" <$> _deTableChange]
   text (TextDAT {..}) = _textBlob
   text _ = Nothing
-  commands (TextDAT _ f cs) = (maybeToList $ const (Pulse "loadonstartpulse") <$> f) ++ (uncurry Store <$> cs)
+  commands (TextDAT _ f cs) = (maybeToList $ const (Pulse "loadonstartpulse" "1" 1) <$> f) ++ (uncurry Store <$> cs)
+  commands (DatExec {..}) = [Pulse "active" "0" 2] ++ (uncurry Store <$> _datVars)
   commands ((view datVars) -> tvs) = uncurry Store <$> tvs
   --connections (maybeToList . flip (^?) datIns -> cs) = mconcat cs
 
@@ -507,7 +509,7 @@ chopExec' :: (DAT -> DAT) -> Tree CHOP -> Tree DAT
 chopExec' f chop = N $ f $ ChopExec chop Nothing Nothing Nothing Nothing Nothing
 
 datExec' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
-datExec' f d = N $ f $ DatExec d Nothing
+datExec' f d = N $ f $ DatExec d Nothing []
 
 cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree BS.ByteString
 cell = Cell

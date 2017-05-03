@@ -99,7 +99,7 @@ parseTree (Resolve r) = parseTree r
 parseTree (ResolveP r) = parseParam r
 
 parseCommand :: (Monad m) => CommandType -> StateT Messages m Messagable
-parseCommand (Pulse bs) = pure $ Command "pulse" [bs]
+parseCommand (Pulse bs v f) = pure $ Command "pulse" [bs, v, pack $ show f]
 parseCommand (Store bs t) = do ttype <- parseParam t
                                return $ Command "store" [bs, ttype]
 

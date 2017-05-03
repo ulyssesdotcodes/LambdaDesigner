@@ -48,5 +48,5 @@ classes = {
   'light' : (lightCOMP, 'light', 'COMP')
 }
 
-def getClass(opname):
-  return classes.get(opname, 'none')
+def getClass(opname, default):
+  return classes.get(opname, default)

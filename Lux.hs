@@ -15,13 +15,13 @@ import Data.Matrix
 import qualified Data.ByteString.Char8 as BS
 
 data VoteType = Movie | Effect deriving Eq
-data VoteEffect = VoteEffect VoteType Int Int Int deriving Eq
+data VoteEffect = VoteEffect VoteType BS.ByteString BS.ByteString BS.ByteString deriving Eq
 
 vtToBS Movie = "movie"
 vtToBS Effect = "effect"
-veToBS (VoteEffect (vtToBS -> ty) i1 i2 i3) = ty:(BS.pack . show <$> [i1, i2, i3])
+veToBS (VoteEffect (vtToBS -> ty) i1 i2 i3) = ty:[i1, i2, i3]
 
-finalout = outT $ switchT (chopChan0 $ invert [held]) [deckA, deckB]
+finalout = outT $  switchT (chopChan0 $ invert [held]) [deckA, deckB]
 
 secChop = constC [floor seconds]
 
@@ -67,21 +67,31 @@ moviesList = map (\i -> BS.concat ["C:\\Users\\Ulysses Popple\\Development\\Lux-
   , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Helen.mp4"
   ]
 
-votesList = veToBS <$> [ VoteEffect Movie 19 34 35
-                       , VoteEffect Movie 0 34 35
-                       , VoteEffect Effect 0 34 35
-                       , VoteEffect Movie 20 34 35
-                       , VoteEffect Movie 10 34 35
-                       , VoteEffect Effect 0 34 35
-                       , VoteEffect Movie 15 34 35
+votesList = veToBS <$> [ VoteEffect Effect "fade" "vanish" "dim"
+                       , VoteEffect Movie "19" "34" "35"
+                       -- , VoteEffect Movie "0" "34" "35"
+                       , VoteEffect Effect "fade" "vanish" "dim"
+                       , VoteEffect Effect "fade" "vanish" "dim"
+                       , VoteEffect Effect "fade" "vanish" "dim"
+                       , VoteEffect Movie "20" "34" "35"
+                       , VoteEffect Movie "10" "34" "35"
+                       , VoteEffect Effect "vanish" "fade" "dim"
+                       , VoteEffect Movie "15" "34" "35"
                        ]
 votes = table $ fromLists votesList
 currentVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer) !+ (float (-1)))) votes
-effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") currentVote
+
 movieVote = selectD' (selectDRExpr ?~ PyExpr "re.match('movie',me.inputCell.val) != None") currentVote
 movieInd' = constC . (:[]) $ castf $ cell ((int 0), casti $ chopChan0 maxVote !+ float 1) movieVote
 movieInd = feedbackC (constC [float 0]) (\m -> hold (mergeC' (mergeCDupes ?~ int 1) [movieInd',  m]) (invert $ [constC [voteEnabled]])) id
 
+effects = [ fix "fade" $ N $ LevelTOP (Just $ float 0.3) []
+          , fix "vanish" $ N $ LevelTOP (Just $ float 0) []
+          , fix "dim" $ N $ LevelTOP (Just $ float 0.9) []
+          ]
+
+effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") currentVote
+effectRunner t = datExec' ((datVars .~ [("base", Resolve finalout), ("voteResult", Resolve maxVote)]) . (deTableChange ?~ t)) effectVote
 
 server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)) . (datVars .~ [("website", Resolve website)] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums)) (fileD "scripts/server.py")
 
@@ -101,8 +111,11 @@ voteTimer = timerSeg' ((timerShowSeg ?~ bool True)) [ TimerSegment 5 8
                                                     , TimerSegment 5 8
                                                     ]
 
-votesExec = datExec' (deTableChange ?~ "print(dat[0,0])") $ selectD' (selectDRI ?~ casti (chopChanName "segment" voteTimer)) votes
+-- votesExec = (deTableChange ?~ "print(dat[0,0])") $ selectD' (selectDRI ?~ casti (chopChanName "segment" voteTimer)) votes
 
 
 go = do ms <- run [server, closepeer] mempty
+        eft <- BS.readFile "TD/scripts/effectChangeScript.py"
+        ms <- run effects ms
+        ms <- run [effectRunner eft] ms
         run [finalout] ms
