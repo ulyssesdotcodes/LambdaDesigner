@@ -74,6 +74,9 @@ $(document).ready(function(){
         $(votes[0]).html(msg.vote1);
         $(votes[1]).html(msg.vote2);
         $(votes[2]).html(msg.vote3);
+        break;
+      case 'votesEnabled':
+        $('.vote').prop('disabled', !msg.enabled)
     }
   }
 	

@@ -349,11 +349,11 @@ instance Baseable CHOP where
   outOp o = N $ OutCHOP [o]
 
 instance Op DAT where
-  pars (ChopExec chop offon won onoff woff vc ) = ("chop", ResolveP chop):(catMaybes [ ("offtoon",) . PyExpr <$> offon
-                                                                                    , ("whileon",) . PyExpr <$> won
-                                                                                    , ("ontooff",) . PyExpr <$> onoff
-                                                                                    , ("whileoff",) . PyExpr <$> woff
-                                                                                    , ("valuechange",) . PyExpr <$> vc
+  pars (ChopExec chop offon won onoff woff vc ) = ("chop", ResolveP chop):(catMaybes [ ("offtoon",) . Resolve . Op.bool . const True <$> offon
+                                                                                    , ("whileon",) . Resolve . Op.bool . const True <$> won
+                                                                                    , ("ontooff",) . Resolve . Op.bool . const True <$> onoff
+                                                                                    , ("whileoff",) . Resolve . Op.bool . const True <$> woff
+                                                                                    , ("valuechange",) . Resolve . Op.bool . const True <$> vc
                                                                                     ])
   pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . Op.bool . const True <$> _deTableChange])
   pars (TextDAT {..}) = catMaybes [("file" <$$> _textFile)]
@@ -392,7 +392,7 @@ instance Op DAT where
                   ]
     where
       concatFunc (name, body) = BS.append (makec name) body
-      makec prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev): \n"]
+      makec prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev):\n"]
   text (DatExec {..}) = Just . BS.intercalate "\n\n" $ catMaybes [ BS.append "def tableChange(dat):\n" <$> _deTableChange]
   text (TextDAT {..}) = _textBlob
   text _ = Nothing

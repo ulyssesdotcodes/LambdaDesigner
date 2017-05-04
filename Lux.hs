@@ -68,7 +68,7 @@ moviesList = map (\i -> BS.concat ["C:\\Users\\Ulysses Popple\\Development\\Lux-
 
 votesList = veToBS <$> [ VoteEffect Effect "fade" "vanish" "dim"
                        , VoteEffect Movie "19" "34" "35"
-                       -- , VoteEffect Movie "0" "34" "35"
+                       , VoteEffect Movie "0" "34" "35"
                        , VoteEffect Effect "fade" "vanish" "dim"
                        , VoteEffect Effect "fade" "vanish" "dim"
                        , VoteEffect Effect "fade" "vanish" "dim"
@@ -78,9 +78,10 @@ votesList = veToBS <$> [ VoteEffect Effect "fade" "vanish" "dim"
                        , VoteEffect Movie "15" "34" "35"
                        ]
 votes = table $ fromLists votesList
-currentVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer) !+ (float (-1)))) votes
+currentVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer))) votes
+prevVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer) !+ (float (-1)))) votes
 
-movieVote = selectD' (selectDRExpr ?~ PyExpr "re.match('movie',me.inputCell.val) != None") currentVote
+movieVote = selectD' (selectDRExpr ?~ PyExpr "re.match('movie',me.inputCell.val) != None") prevVote
 movieInd' = constC . (:[]) $ castf $ cell ((int 0), casti (chopChan0 maxVote) !+ int 1) movieVote
 movieInd = feedbackC (constC [float 0]) (\m -> hold (switchC (numRows movieVote) [m, movieInd']) (invert $ [constC [voteEnabled]])) id
 
@@ -89,13 +90,14 @@ effects = [ fix "fade" $ N $ LevelTOP (Just $ float 0.3) []
           , fix "dim" $ N $ LevelTOP (Just $ float 0.9) []
           ]
 
-effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") currentVote
+effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") prevVote
 effectRunner t = datExec' ((datVars .~ [("base", Resolve finalout), ("voteResult", Resolve maxVote)]) . (deTableChange ?~ t)) effectVote
 
 server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)) . (datVars .~ [("website", Resolve website), ("timer", Resolve voteTimer)] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums))
             (fix "server" $ fileD' (datVars .~ [("timer", Resolve voteTimer)]) "scripts/server.py")
 
 sendServer = datExec' (deTableChange ?~ "  mod.server.updateVotes(dat[0, 1].val, dat[0,2].val, dat[0,3].val)") currentVote
+sendEnabled = chopExec' (ceValueChange ?~ "  mod.server.enableVotes(val)") $ constC [voteEnabled]
 
 peers = fix "myPeers" $ textD ""
 
@@ -116,7 +118,7 @@ voteTimer = timerSeg' ((timerShowSeg ?~ bool True)) [ TimerSegment 5 8
 -- votesExec = (deTableChange ?~ "print(dat[0,0])") $ selectD' (selectDRI ?~ casti (chopChanName "segment" voteTimer)) votes
 
 
-go = do ms <- run [server, closepeer, sendServer] mempty
+go = do ms <- run [server, closepeer, sendServer, sendEnabled] mempty
         eft <- BS.readFile "TD/scripts/effectChangeScript.py"
         ms <- run effects ms
         ms <- run [effectRunner eft] ms

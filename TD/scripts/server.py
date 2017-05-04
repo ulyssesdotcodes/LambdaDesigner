@@ -71,13 +71,22 @@ def receive(dat, rowIndex, message, bytes, peer):
 
     return
 
-def updateVotes(v1, v2, v3):
+def sendJson(data):
     peerList = me.fetch('peerList')
-    returnMsg = json.dumps({'type': 'voteChange', 'vote1':v1, 'vote2':v2, 'vote3':v3})
+    returnMsg = json.dumps(data)
     packedMsg = encode(returnMsg.encode('utf-8'))
     packedMsg = b''.join(packedMsg)
     for port in peerList:
         peerList[port].sendBytes(packedMsg)
+    return
+
+
+def updateVotes(v1, v2, v3):
+    sendJson({'type': 'voteChange', 'vote1':v1, 'vote2':v2, 'vote3':v3})
+    return
+
+def enableVotes(enabled):
+    sendJson({'type': 'votesEnabled', 'enabled': enabled})
     return
 
 
