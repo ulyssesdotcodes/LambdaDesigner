@@ -16,8 +16,11 @@ classes = {
   'switchTop' : (switchTOP, 'switch', 'TOP'),
   'selectTop' : (selectTOP, 'select', 'TOP'),
 
+  'audioIn' : (audiodeviceinCHOP, 'audiodevicein', 'CHOP'),
+  'audioSpectrum' : (audiospectrumCHOP, 'audiospect', 'CHOP'),
   'constantChop' : (constantCHOP, 'constant', 'CHOP'),
   'count' : (countCHOP, 'count', 'CHOP'),
+  'delay' : (delayCHOP, 'delay', 'CHOP'),
   'fan' : (fanCHOP, 'fan', 'CHOP'),
   'feedbackChop' : (feedbackCHOP, 'feedback', 'CHOP'),
   'hold' : (holdCHOP, 'hold', 'CHOP'),

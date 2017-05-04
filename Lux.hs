@@ -66,7 +66,8 @@ moviesList = map (\i -> BS.concat ["C:\\Users\\Ulysses Popple\\Development\\Lux-
   , "C:\\Users\\Ulysses Popple\\Development\\Lux-TD\\3 min\\Helen.mp4"
   ]
 
-votesList = veToBS <$> [ VoteEffect Effect "fade" "vanish" "dim"
+votesList = veToBS <$> [ VoteEffect Movie "0" "0" "0"
+                       , VoteEffect Effect "fade" "vanish" "dim"
                        , VoteEffect Movie "19" "34" "35"
                        , VoteEffect Movie "0" "34" "35"
                        , VoteEffect Effect "fade" "vanish" "dim"
@@ -78,12 +79,12 @@ votesList = veToBS <$> [ VoteEffect Effect "fade" "vanish" "dim"
                        , VoteEffect Movie "15" "34" "35"
                        ]
 votes = table $ fromLists votesList
-currentVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer))) votes
-prevVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer) !+ (float (-1)))) votes
+currentVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer) !+ (chopChanName "running" voteTimer))) votes
+prevVote = selectD' (selectDRI ?~ (casti $ (chopChanName "segment" voteTimer))) votes
 
 movieVote = selectD' (selectDRExpr ?~ PyExpr "re.match('movie',me.inputCell.val) != None") prevVote
 movieInd' = constC . (:[]) $ castf $ cell ((int 0), casti (chopChan0 maxVote) !+ int 1) movieVote
-movieInd = feedbackC (constC [float 0]) (\m -> hold (switchC (numRows movieVote) [m, movieInd']) (invert $ [constC [voteEnabled]])) id
+movieInd = feedbackC (constC [float 0]) (\m -> hold (mergeC' (mergeCDupes ?~ int 1) [movieInd', m]) (invert $ [constC [voteEnabled]])) id
 
 effects = [ fix "fade" $ N $ LevelTOP (Just $ float 0.3) []
           , fix "vanish" $ N $ LevelTOP (Just $ float 0) []

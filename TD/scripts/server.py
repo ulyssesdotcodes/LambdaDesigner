@@ -61,7 +61,6 @@ def receive(dat, rowIndex, message, bytes, peer):
               if voteNumOp:
                 voteNumOp.par.value0.pulse(1, frames=2)
             elif payload.get('type') == "start":
-              print(me.fetch('timer', '--')[1:])
               op(me.fetch('timer', '--')[1:]).par.start.pulse()
         except:
             if fullMsg['payload'] == b'\x03\xe9':

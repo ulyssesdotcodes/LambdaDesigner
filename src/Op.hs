@@ -38,8 +38,9 @@ class Op a where
   commands :: a -> [CommandType]
   commands _ = []
 
-data CHOP = ConstantCHOP { _values :: [Tree Float]
-                        }
+data CHOP = AudioIn
+          | AudioSpectrum { _chopIns :: [Tree CHOP] }
+          | ConstantCHOP { _values :: [Tree Float] }
           | Count { _chopIns :: [Tree CHOP]
                   , _countReset :: Maybe (Tree CHOP)
                   , _countThresh :: Maybe (Tree Float)
@@ -47,6 +48,9 @@ data CHOP = ConstantCHOP { _values :: [Tree Float]
                   , _countLimMin :: Maybe (Tree Float)
                   , _countLimMax :: Maybe (Tree Float)
                   , _countResetCondition :: Maybe (Tree Int)
+                  }
+          | Delay { _delayFrames :: Tree Int
+                  , _chopIns :: [Tree CHOP]
                   }
           | Fan { _fanOp :: Maybe (Tree Int)
                 , _fanOffNeg :: Maybe (Tree Bool)
@@ -62,8 +66,11 @@ data CHOP = ConstantCHOP { _values :: [Tree Float]
                   , _chopIns :: [Tree CHOP]
                   }
           | Math { _mathAdd :: Maybe (Tree Float)
+                 , _mathAddPost :: Maybe (Tree Float)
+                 , _mathAlign :: Maybe (Tree Int)
                  , _mathCombChops :: Maybe (Tree Int)
                  , _mathInt :: Maybe (Tree Int)
+                 , _mathMult :: Maybe (Tree Float)
                  , _chopIns :: [Tree CHOP]
                  }
           | MergeCHOP { _mergeCDupes :: Maybe (Tree Int)
@@ -124,9 +131,12 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
 
 data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
                      , _chopToSopAttrScope :: Maybe (Tree BS.ByteString)
+                     , _chopToSResample :: Maybe (Tree Bool)
+                     , _sopIns :: [Tree SOP]
                      }
          | CircleSOP { _circType :: Maybe (Tree Int)
                      , _circArc :: Maybe (Tree Int)
+                     , _sopIns :: [Tree SOP]
                      }
          | InSOP
          | NoiseSOP { _noiseSTranslate :: Vec3
@@ -223,6 +233,9 @@ int = PyExpr . pack . show
 bool :: Bool -> Tree Bool
 bool = PyExpr . Data.Bool.bool "0" "1"
 
+str :: String -> Tree ByteString
+str = PyExpr . pack . show
+
 (!+) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
 (!+) = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
 
@@ -243,7 +256,6 @@ floor = pyMathOp "floor"
 
 ceil :: (Num n) => Tree n -> Tree n
 ceil = pyMathOp "ceil"
-
 
 pmax :: (Num n) => Tree n -> Tree n -> Tree n
 pmax = Mod2 (\s t -> BS.concat ["max(", s, ", ", t, ")"])
@@ -309,24 +321,34 @@ instance Op CHOP where
                                   , "limitmax" <$$> _countLimMax
                                   , "resetcondition" <$$> _countResetCondition
                                   ] ++ chopBasePars n
+  pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames)]
   pars n@(Fan o off _) = catMaybes ["fanop" <$$> o, "alloff" <$$> off] ++ chopBasePars n
   pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
-  pars n@(Math a c i _) = catMaybes ["preoff" <$$> a, "chopop" <$$> c, "integer" <$$> i] ++ chopBasePars n
+  pars n@(Math {..}) = catMaybes [ "preoff" <$$> _mathAdd
+                                 , "postoff" <$$> _mathAddPost
+                                 , "chopop" <$$> _mathCombChops
+                                 , "integer" <$$> _mathInt
+                                 , "align" <$$> _mathAlign
+                                 , "gain" <$$> _mathMult
+                                 ] ++ chopBasePars n
   pars n@(MergeCHOP {..}) = catMaybes [("duplicate" <$$> _mergeCDupes)] ++ chopBasePars n
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
                                       , "type" <$$> _noiseCType
                                       , "period" <$$> _noiseCPeriod
                                       ] ++ chopBasePars n
   pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
-  pars n@(SOPToCHOP s) = [("sop", Resolve s)] ++ chopBasePars n
+  pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
   pars n@(Timer {..}) = catMaybes [("segdat",) . ResolveP <$> _timerSegments
                                   , ("outseg" <$$> _timerShowSeg)
                                   , ("outrunning" <$$> _timerShowSeg)
                                   ] ++ chopBasePars n
   pars _ = []
+  opType (AudioIn {}) = "audioIn"
+  opType (AudioSpectrum {}) = "audioSpectrum"
   opType (ConstantCHOP {}) = "constantChop"
   opType (Count {}) = "count"
+  opType (Delay {}) = "delay"
   opType (Fan {}) = "fan"
   opType (FeedbackCHOP _) = "feedbackChop"
   opType (Hold {}) = "hold"
@@ -415,16 +437,16 @@ instance Baseable MAT where
   outOp o = N $ OutMAT [o]
 
 instance Op SOP where
-  pars (CircleSOP p a) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
+  pars (CircleSOP p a _) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
   pars (NoiseSOP t _) = vec3Map' "t" t
-  pars (CHOPToSOP c a) = ("chop", Resolve c):(catMaybes [("attscope" <$$> a)])
+  pars (CHOPToSOP c a r _) = ("chop", ResolveP c):(catMaybes [("attscope" <$$> a), ("mapping" <$$> r)])
   pars _ = []
-  opType (CircleSOP _ _) = "circleSop"
+  opType (CircleSOP {}) = "circleSop"
   opType (InSOP {}) = "inSop"
   opType (NoiseSOP {}) = "noiseSop"
   opType (OutSOP {}) = "outSop"
   opType Sphere = "sphere"
-  opType (CHOPToSOP _ _) = "chopToSop"
+  opType (CHOPToSOP {}) = "chopToSop"
   connections (maybeToList . flip (^?) sopIns -> cs) = mconcat cs
 
 instance Baseable SOP where
@@ -497,6 +519,12 @@ castf = Cast (\fl -> BS.concat ["float(", fl, ")"])
 
 -- CHOPs
 
+audioIn :: Tree CHOP
+audioIn = N $ AudioIn
+
+audioSpectrum :: Tree CHOP -> Tree CHOP
+audioSpectrum t = N $ AudioSpectrum [t]
+
 constC :: [Tree Float] -> Tree CHOP
 constC = N <$> ConstantCHOP
 
@@ -506,6 +534,9 @@ count' f t = N ins
     def = f $ Count [t] Nothing Nothing Nothing Nothing Nothing Nothing
     ins = def & chopIns %~ (flip (++) (catMaybes . maybeToList $ def ^? countReset))
 count = count' id
+
+delay :: Tree Int -> Tree CHOP -> Tree CHOP
+delay f = N <$> Delay f . (:[])
 
 feedbackC :: Tree CHOP -> (Tree CHOP -> Tree CHOP) -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
 feedbackC = FC (FeedbackCHOP [])
@@ -527,7 +558,7 @@ mergeC' f = N . f <$> MergeCHOP Nothing
 mergeC = mergeC' id
 
 math' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
-math' f = N <$> f . Math Nothing Nothing Nothing
+math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing
 
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
 noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing)
@@ -598,7 +629,7 @@ constM f = N . f $ ConstantMAT emptyV3 Nothing
 -- SOPs
 
 circleS' :: (SOP -> SOP) -> Tree SOP
-circleS' f = N . f $ CircleSOP Nothing Nothing
+circleS' f = N . f $ CircleSOP Nothing Nothing []
 circleS = circleS' id
 
 noiseS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
@@ -612,8 +643,9 @@ sphere = sphere' id
 outS :: Tree SOP -> Tree SOP
 outS = N <$> OutSOP . (:[])
 
-chopToS :: Tree CHOP -> Tree SOP
-chopToS c = N $ CHOPToSOP c Nothing
+chopToS' :: (SOP -> SOP) -> Tree CHOP -> Tree SOP
+chopToS' f c = N . f $ CHOPToSOP c Nothing Nothing []
+chopToS = chopToS' id
 
 -- Tops
 
