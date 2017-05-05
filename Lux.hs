@@ -67,12 +67,10 @@ moviesList = map (\i -> BS.concat ["C:\\Users\\Ulysses Popple\\Development\\Lux-
   ]
 
 votesList = veToBS <$> [ VoteEffect Movie "0" "0" "0"
-                       , VoteEffect Effect "fade" "vanish" "dim"
+                       , VoteEffect Effect "bandw" "vhs" "bandw"
                        , VoteEffect Movie "19" "34" "35"
                        , VoteEffect Movie "0" "34" "35"
-                       , VoteEffect Effect "fade" "vanish" "dim"
-                       , VoteEffect Effect "fade" "vanish" "dim"
-                       , VoteEffect Effect "fade" "vanish" "dim"
+                       , VoteEffect Effect "vhs" "vhs" "bandw"
                        , VoteEffect Movie "20" "34" "35"
                        , VoteEffect Movie "10" "34" "35"
                        , VoteEffect Effect "vanish" "fade" "dim"
@@ -86,9 +84,8 @@ movieVote = selectD' (selectDRExpr ?~ PyExpr "re.match('movie',me.inputCell.val)
 movieInd' = constC . (:[]) $ castf $ cell ((int 0), casti (chopChan0 maxVote) !+ int 1) movieVote
 movieInd = feedbackC (constC [float 0]) (\m -> hold (mergeC' (mergeCDupes ?~ int 1) [movieInd', m]) (invert $ [constC [voteEnabled]])) id
 
-effects = [ fix "fade" $ N $ LevelTOP (Just $ float 0.3) []
-          , fix "vanish" $ N $ LevelTOP (Just $ float 0) []
-          , fix "dim" $ N $ LevelTOP (Just $ float 0.9) []
+effects = [ fix "bandw" $ N $ GLSLTOP (fileD "scripts/bandw.glsl") [] []
+          , fix "vhs" $ N $ GLSLTOP (fileD "scripts/vhs.glsl") [("i_time", emptyV4 & _1 ?~ seconds)] []
           ]
 
 effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") prevVote

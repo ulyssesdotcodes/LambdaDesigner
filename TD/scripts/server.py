@@ -18,6 +18,7 @@ import struct
 import array
 import socket
 import json
+import time
 
 def receive(dat, rowIndex, message, bytes, peer):
     peerList = me.fetch('peerList',{})
@@ -85,7 +86,15 @@ def updateVotes(v1, v2, v3):
     return
 
 def enableVotes(enabled):
-    sendJson({'type': 'votesEnabled', 'enabled': enabled})
+    timer = op(me.fetch('timer', '--')[1:])
+    cur = timer.runningSeconds
+    segdat = op(timer.par.segdat)
+    n = next(x for x in enumerate(timer.beginSeconds) if x[1] > cur)
+    nextStart = n[1] - cur
+    seg = segdat[n[0], 'delay']
+    if enabled:
+      nextStart -= seg
+    sendJson({'type': 'votesEnabled', 'enabled': enabled, 'endtime': time.time() + nextStart})
     return
 
 

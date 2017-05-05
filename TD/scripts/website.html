@@ -42,6 +42,7 @@ $user_colour = array_rand($colours);
 <script language="javascript" type="text/javascript">  
 $(document).ready(function(){
 	var wsUri = "ws://localhost:7000/connect"; 	
+  nexttimer = 0
 	websocket = new WebSocket(wsUri); 
 	
 	websocket.onopen = function(ev) { // connection is open 
@@ -76,14 +77,26 @@ $(document).ready(function(){
         $(votes[2]).html(msg.vote3);
         break;
       case 'votesEnabled':
-        $('.vote').prop('disabled', !msg.enabled)
+        $('.vote').prop('disabled', !msg.enabled);
+        $('.votestatus').html(msg.enabled ? 'ends' : 'starts')
+        nexttimer = msg.endtime;
+        break;
     }
   }
 	
 	websocket.onerror	= function(ev){$('#message_box').append("<div class=\"system_error\">Error Occurred - "+ev.data+"</div>");}; 
 	websocket.onclose 	= function(ev){$('#message_box').append("<div class=\"system_msg\">Connection Closed</div>");}; 
+
+   var timer = setInterval(function() {
+     var now = new Date().getTime() * 0.001;
+     $('.endtime').html(Math.round(nexttimer - now))
+   }, 1000);
 });
 </script>
+
+<div>
+    Vote <span class="votestatus">starts</span> in: <span class="endtime" ></span>
+</div>
 
 <button class="start">Start</button>
 <button class="vote" data-votenum="0"> Vote 1 </button>

@@ -38,7 +38,10 @@ class Op a where
   commands :: a -> [CommandType]
   commands _ = []
 
-data CHOP = AudioIn
+data CHOP = Analyze { _analyzeFunc :: Tree Int
+                    , _chopIns :: [Tree CHOP]
+                    }
+          | AudioIn
           | AudioSpectrum { _chopIns :: [Tree CHOP] }
           | ConstantCHOP { _values :: [Tree Float] }
           | Count { _chopIns :: [Tree CHOP]
@@ -153,7 +156,12 @@ data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
                           }
            | Displace { _topIns :: [Tree TOP] }
            | FeedbackTOP { _fbTop :: Maybe (Tree TOP)
+                         , _topIns :: [Tree TOP]
                          }
+           | GLSLTOP { _glslTDat :: Tree DAT
+                     , _glslTUniforms :: [(String, Vec4)]
+                     , _topIns :: [Tree TOP]
+                     }
            | LevelTOP { _levelOpacity :: Maybe (Tree Float)
                       , _topIns :: [Tree TOP]
                       }
@@ -257,6 +265,9 @@ floor = pyMathOp "floor"
 ceil :: (Num n) => Tree n -> Tree n
 ceil = pyMathOp "ceil"
 
+osin :: (Num n) => Tree n -> Tree n
+osin = pyMathOp "sin"
+
 pmax :: (Num n) => Tree n -> Tree n -> Tree n
 pmax = Mod2 (\s t -> BS.concat ["max(", s, ", ", t, ")"])
 
@@ -274,8 +285,10 @@ numRows = NumRows
 
 type Vec2 = (Maybe (Tree Float), Maybe (Tree Float))
 type Vec3 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
+type Vec4 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
 type IVec2 = (Maybe (Tree Int), Maybe (Tree Int))
 
+emptyV4 = (Nothing, Nothing, Nothing, Nothing)
 emptyV3 = (Nothing, Nothing, Nothing)
 emptyV2 = (Nothing, Nothing)
 
@@ -290,6 +303,14 @@ dimenMap = vec2Map ("w", "h")
 
 rgbMap :: String -> Vec3 -> [(ByteString, Tree ByteString)]
 rgbMap = vec3Map ("r", "g", "b")
+
+vec4Map :: (ByteString, ByteString, ByteString, ByteString) -> String -> Vec4 -> [(ByteString, Tree ByteString)]
+vec4Map (x, y, z, w) n (xv, yv, zv, wv) = catMaybes [ BS.append (pack n) x <$$> xv
+                                                    , BS.append (pack n) y <$$> yv
+                                                    , BS.append (pack n) z <$$> zv
+                                                    , BS.append (pack n) w <$$> wv
+                                                    ]
+vec4Map' = vec4Map ("x", "y", "z", "w")
 
 vec3Map :: (ByteString, ByteString, ByteString) -> String -> Vec3 -> [(ByteString, Tree ByteString)]
 vec3Map (x, y, z) n (xv, yv, zv) = catMaybes [BS.append (pack n) x <$$> xv,  BS.append (pack n) y <$$> yv, BS.append (pack n) z <$$> zv]
@@ -314,6 +335,7 @@ makeLenses ''Geo
 makeLenses ''Light
 
 instance Op CHOP where
+  pars n@(Analyze {..}) = [("function", Resolve _analyzeFunc)]
   pars n@(ConstantCHOP v) = L.zipWith (\i v' -> (BS.pack $ "value" ++ show i, Resolve v')) [0..] v ++ chopBasePars n
   pars n@(Count {..}) = catMaybes [ "threshup" <$$> _countThresh
                                   , "output" <$$> _countLimType
@@ -344,6 +366,7 @@ instance Op CHOP where
                                   , ("outrunning" <$$> _timerShowSeg)
                                   ] ++ chopBasePars n
   pars _ = []
+  opType (Analyze {}) = "analyze"
   opType (AudioIn {}) = "audioIn"
   opType (AudioSpectrum {}) = "audioSpectrum"
   opType (ConstantCHOP {}) = "constantChop"
@@ -456,10 +479,10 @@ instance Baseable SOP where
 instance Op TOP where
   pars (CHOPToTOP chop) = [("chop", ResolveP chop)]
   pars (CompositeTOP op _) = [("operand", Resolve op)]
+  pars (FeedbackTOP {..}) = catMaybes [("top",) . ResolveP <$> _fbTop]
+  pars (GLSLTOP {..}) = (:) ("pixeldat", ResolveP _glslTDat) $
+    L.concatMap (\(i, (n, v)) -> (BS.pack $ "uniname" ++ show i, str n):vec4Map' ("value" ++ show i) v) $ L.zip [0..] _glslTUniforms
   pars (MovieFileIn file mode index) = ("file", file): (catMaybes [("playmode" <$$> mode) , ("index" <$$> index)])
-  -- pars (Render geo cam light) = fromListMaybe [ ("geometry", Just $ Resolve geo)
-  --                                               , ("camera", Just $ Resolve cam)
-  --                                               , ("lights", ResolveT light)]
   pars (Transform t s _) = vec2Map' "t" t ++ vec2Map' "s" s
   pars (LevelTOP o _) = catMaybes [("opacity" <$$> o)]
   pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
@@ -472,12 +495,13 @@ instance Op TOP where
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP {}) = "compositeTop"
   opType (Displace {}) = "displace"
+  opType (GLSLTOP {}) = "glslTop"
   opType (InTOP {}) = "inTop"
   opType (MovieFileIn _ _ _) = "movieFileIn"
   -- opType (Render _ _ _) = "render"
   opType (Transform {}) = "transform"
   opType CircleTOP = "circleTop"
-  opType (FeedbackTOP _) = "feedbackTop"
+  opType (FeedbackTOP {}) = "feedbackTop"
   opType (OutTOP {})= "outTop"
   opType (NullTOP {}) = "nullTop"
   opType (LevelTOP {}) = "levelTop"
@@ -518,6 +542,9 @@ castf :: (Floating f) => Tree i -> Tree f
 castf = Cast (\fl -> BS.concat ["float(", fl, ")"])
 
 -- CHOPs
+
+analyze :: Tree Int -> Tree CHOP -> Tree CHOP
+analyze f c = N $ Analyze f [c]
 
 audioIn :: Tree CHOP
 audioIn = N $ AudioIn
@@ -662,19 +689,23 @@ chopToT = N <$> CHOPToTOP
 outT :: Tree TOP -> Tree TOP
 outT = N <$> OutTOP . (:[])
 
-render' :: (TOP -> TOP) -> Tree Geo -> Tree Camera -> Tree TOP
-render' f geo cam = N . f $ Render geo cam Nothing
-render = render' id
+circleT' :: (TOP -> TOP) -> Tree TOP
+circleT' f = N . f $ CircleTOP
+circleT = circleT' id
 
 compT :: Int -> [Tree TOP] -> Tree TOP
 compT op = N <$> CompositeTOP (int op)
 
 feedbackT :: Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP) -> Tree TOP
-feedbackT = FT (FeedbackTOP Nothing)
+feedbackT = FT (FeedbackTOP Nothing [])
 
-circleT' :: (TOP -> TOP) -> Tree TOP
-circleT' f = N . f $ CircleTOP
-circleT = circleT' id
+glslT' :: (TOP -> TOP) -> Tree DAT -> Tree TOP
+glslT' f d = N . f $ GLSLTOP d [] []
+glslT = glslT' id
+
+render' :: (TOP -> TOP) -> Tree Geo -> Tree Camera -> Tree TOP
+render' f geo cam = N . f $ Render geo cam Nothing
+render = render' id
 
 transformT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 transformT' f = N <$> f . (Transform emptyV2 emptyV2) . (:[])

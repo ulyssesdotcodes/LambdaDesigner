@@ -79,8 +79,9 @@ parseTree (FC fpars reset loop sel) = do messages <- get
                                          return laddr
 parseTree (FT fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectTOP Nothing)) messages
-                                         laddr <- parseTree (N $ fpars & topIns .~ [reset] & fbTop .~ (Just . loop . sel $ N (SelectTOP Nothing)))
-                                         modify $ T.adjust ((:) (Parameter "top" $ wrapOp laddr)) $ saddr
+                                         let sname = BS.append "fb_" $ BS.tail saddr
+                                         laddr <- parseTree (loop $ N $ fpars & topIns .~ [reset] & fbTop ?~ sel (fix sname (N $ SelectTOP Nothing)))
+                                         modify $ T.adjust ((:) (Parameter "top" $ wrapOp laddr)) $ BS.append "/" sname
                                          return laddr
 parseTree (Fix name op) = do messages <- get
                              let name' = BS.append "/" name

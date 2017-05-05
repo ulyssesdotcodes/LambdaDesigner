@@ -4,6 +4,7 @@ classes = {
   'compositeTop' : (compositeTOP, 'comp', 'TOP'),
   'displace' : (displaceTOP, 'displace', 'TOP'),
   'feedbackTop' : (feedbackTOP, 'feedback', 'TOP'),
+  'glslTop' : (glslmultiTOP, 'glslMulti', 'TOP'),
   'movieFileIn' : (moviefileinTOP, 'moviefilein', 'TOP'),
   'inTop' : (inTOP, 'in', 'TOP'),
   'nullTop' : (outTOP, 'null', 'TOP'),
@@ -16,7 +17,8 @@ classes = {
   'switchTop' : (switchTOP, 'switch', 'TOP'),
   'selectTop' : (selectTOP, 'select', 'TOP'),
 
-  'audioIn' : (audiodeviceinCHOP, 'audiodevicein', 'CHOP'),
+  'analyze' : (analyzeCHOP, 'analyze', 'CHOP'),
+  'audioIn' : (audiodeviceinCHOP, 'audiodevin', 'CHOP'),
   'audioSpectrum' : (audiospectrumCHOP, 'audiospect', 'CHOP'),
   'constantChop' : (constantCHOP, 'constant', 'CHOP'),
   'count' : (countCHOP, 'count', 'CHOP'),
