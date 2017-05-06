@@ -96,6 +96,9 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | Timer { _timerSegments :: Maybe (Tree DAT)
                   , _timerShowSeg :: Maybe (Tree Bool)
                   , _timerShowRunning :: Maybe (Tree Bool)
+                  , _timerCount :: Maybe (Tree Int)
+                  , _timerLength :: Maybe (Tree Int)
+                  , _timerCallbacks :: Maybe (Tree DAT)
                   }
 
 data DAT = ChopExec { _chopExecChop :: Tree CHOP
@@ -361,9 +364,13 @@ instance Op CHOP where
   pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
-  pars n@(Timer {..}) = catMaybes [("segdat",) . ResolveP <$> _timerSegments
+  pars n@(Timer {..}) = catMaybes [ ("segdat",) . ResolveP <$> _timerSegments
+                                  , ("callbacks",) . ResolveP <$> _timerCallbacks
+                                  , ("length" <$$> _timerLength)
+                                  , ("lengthunits",) . Resolve . const (int 1) <$> _timerLength
                                   , ("outseg" <$$> _timerShowSeg)
                                   , ("outrunning" <$$> _timerShowSeg)
+                                  , ("outtimercount" <$$> _timerCount)
                                   ] ++ chopBasePars n
   pars _ = []
   opType (Analyze {}) = "analyze"
@@ -614,8 +621,11 @@ timerBS :: TimerSegment -> [ByteString]
 timerBS (TimerSegment {..}) = [pack $ show segDelay, pack $ show segLength]
 
 timerSeg' :: (CHOP -> CHOP) -> [TimerSegment] -> Tree CHOP
-timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing
+timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing
 timerSeg = timerSeg' id
+
+timer' :: (CHOP -> CHOP) -> Tree Int -> Tree CHOP
+timer' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) (Just l) Nothing
 
 -- DATs
 

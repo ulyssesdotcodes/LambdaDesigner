@@ -32,10 +32,11 @@ movieIndB = hold movieInd (invert [held])
 
 movies = table $ transpose $ fromLists [moviesList]
 
-deckA = movieFileIn' ((moviePlayMode ?~ int 1) . (movieIndex ?~ (frames !% int (60 * 60 * 3)))) $
+movieTimer = timer' id (int (60 * 60 * 3))
+deckA = movieFileIn' ((moviePlayMode ?~ int 1) . (movieIndex ?~ casti (chopChanName "timer_frames" movieTimer))) $
   (cell ((casti $ floor $ chopChan0 movieIndA) !% int (length moviesList), int 0) movies)
 
-deckB = movieFileIn' ((moviePlayMode ?~ int 1) . (movieIndex ?~ (frames !% int (60 * 60 * 3)))) $
+deckB = movieFileIn' ((moviePlayMode ?~ int 1) . (movieIndex ?~ casti (chopChanName "timer_frames" movieTimer))) $
   (cell ((casti $ floor $ chopChan0 movieIndB) !% int (length moviesList), int 0) movies)
 
 voteCount r v = count' ((countThresh ?~ (float 0.5)) . (countReset ?~ r) . (countResetCondition ?~ int 0)) v
@@ -91,11 +92,16 @@ effects = [ fix "bandw" $ N $ GLSLTOP (fileD "scripts/bandw.glsl") [] []
 effectVote = selectD' (selectDRExpr ?~ PyExpr "re.match('effect',me.inputCell.val) != None") prevVote
 effectRunner t = datExec' ((datVars .~ [("base", Resolve finalout), ("voteResult", Resolve maxVote)]) . (deTableChange ?~ t)) effectVote
 
-server = tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)) . (datVars .~ [("website", Resolve website), ("timer", Resolve voteTimer)] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums))
-            (fix "server" $ fileD' (datVars .~ [("timer", Resolve voteTimer)]) "scripts/server.py")
+server = tcpipD' ((tcpipMode ?~ (int 1)) .
+                  (tcpipCallbackFormat ?~ (int 2)))
+            (fix "server" $ fileD' (datVars .~ [ ("website", Resolve website)
+                                               , ("timer", Resolve voteTimer)
+                                               , ("movieTimer", Resolve movieTimer)
+                                               , ("base", Resolve finalout)
+                                               ] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums)
+                  "scripts/server.py")
 
 sendServer = datExec' (deTableChange ?~ "  mod.server.updateVotes(dat[0, 1].val, dat[0,2].val, dat[0,3].val)") currentVote
-sendEnabled = chopExec' (ceValueChange ?~ "  mod.server.enableVotes(val)") $ constC [voteEnabled]
 
 peers = fix "myPeers" $ textD ""
 
@@ -105,19 +111,18 @@ website = fileD "scripts/website.html"
 
 voteNums = zipWith (\i c -> fix (BS.pack $ "voteNum" ++ show i) c) [0..] [constC [(float 0)], constC [(float 0)], constC [(float 0)]]
 
-voteTimer = timerSeg' ((timerShowSeg ?~ bool True)) [ TimerSegment 5 8
-                                                    , TimerSegment 5 8
-                                                    , TimerSegment 5 8
-                                                    , TimerSegment 5 8
-                                                    , TimerSegment 5 8
-                                                    , TimerSegment 5 8
-                                                    ]
+voteTimer = timerSeg' ((timerShowSeg ?~ bool True) . (timerCallbacks ?~ fileD "scripts/timer_callbacks.py"))
+  [ TimerSegment 0 8
+  , TimerSegment 0 8
+  , TimerSegment 0 8
+  , TimerSegment 0 8
+  , TimerSegment 0 8
+  , TimerSegment 0 8
+  ]
 
 -- votesExec = (deTableChange ?~ "print(dat[0,0])") $ selectD' (selectDRI ?~ casti (chopChanName "segment" voteTimer)) votes
 
 
-go = do ms <- run [server, closepeer, sendServer, sendEnabled] mempty
-        eft <- BS.readFile "TD/scripts/effectChangeScript.py"
-        ms <- run effects ms
-        ms <- run [effectRunner eft] ms
-        run [finalout] ms
+go = do eft <- BS.readFile "TD/scripts/effectChangeScript.py"
+        ms <- run effects mempty
+        run [server, closepeer, sendServer, effectRunner eft] ms

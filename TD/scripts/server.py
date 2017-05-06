@@ -38,7 +38,7 @@ def receive(dat, rowIndex, message, bytes, peer):
         if header['GET'] == '/':
             sendHeader = getHeader(hType='default')
             peer.sendBytes(sendHeader)
-            website = op(dat.fetch('website', '/website')[1:]).text
+            website = op(me.fetch('website', '/website')[1:]).text
             peer.sendBytes(website)
             op('closePeer').run(peer,delayFrames=1)
 
@@ -58,11 +58,21 @@ def receive(dat, rowIndex, message, bytes, peer):
             payload = eval(fullMsg['payload'])
             if payload.get('type') == "vote":
               voteNum = payload.get('votenum',None)
-              voteNumOp = op(dat.fetch("vote" + str(voteNum), "--")[1:])
+              voteNumOp = op(me.fetch("vote" + str(voteNum), "--")[1:])
               if voteNumOp:
                 voteNumOp.par.value0.pulse(1, frames=2)
             elif payload.get('type') == "start":
-              op(me.fetch('timer', '--')[1:]).par.start.pulse()
+              timer = op(me.fetch('timer', '--')[1:])
+              timer.par.start.pulse()
+              timer.par.play = 0
+              op(me.fetch('movieTimer', '--')[1:]).par.start.pulse()
+              baseVid = op(me.fetch('base', '--')[1:])
+              while baseVid.inputs[0].type != "switch":
+                baseVid.inputs[0].destroy()
+            elif payload.get('type') == "approvevotes":
+              op(me.fetch('timer', '--')[1:]).par.play = 1
+              enableVotes(1)
+
         except:
             if fullMsg['payload'] == b'\x03\xe9':
                 peerList.pop(peer.port,None)
@@ -87,14 +97,9 @@ def updateVotes(v1, v2, v3):
 
 def enableVotes(enabled):
     timer = op(me.fetch('timer', '--')[1:])
-    cur = timer.runningSeconds
     segdat = op(timer.par.segdat)
-    n = next(x for x in enumerate(timer.beginSeconds) if x[1] > cur)
-    nextStart = n[1] - cur
-    seg = segdat[n[0], 'delay']
-    if enabled:
-      nextStart -= seg
-    sendJson({'type': 'votesEnabled', 'enabled': enabled, 'endtime': time.time() + nextStart})
+    seg = segdat[int(timer['segment']), 'length']
+    sendJson({'type': 'votesEnabled', 'enabled': enabled, 'endtime': time.time() + seg})
     return
 
 

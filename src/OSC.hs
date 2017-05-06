@@ -27,7 +27,7 @@ data Messagable = Create BS.ByteString
                 | TextContent BS.ByteString
                 | Command ByteString [ByteString]
                 | Fixed BS.ByteString
-                deriving Eq
+                deriving (Eq, Show)
 
 type Messages = Trie [Messagable]
 
@@ -153,7 +153,10 @@ removeDuplicates addr ty = do messages <- get
                                 _ -> return addr
 
 findEmpty :: ByteString -> Messages -> BS.ByteString
-findEmpty ty = BS.append (BS.append "/" ty) . pack . show . L.length . T.keys . submap (BS.append (BS.pack "/") ty)
+findEmpty ty ms = BS.concat ["/", ty, "_", BS.pack . findKey 0 . L.map BS.unpack . L.sort . T.keys $ submap (BS.append "/" ty) ms]
+  where
+    findKey n [] = show n
+    findKey n (x:xs) = if (L.tail $ L.dropWhile (/= '_') x) == show n then findKey (n + 1) xs else show n
 
 makeMessages :: Messages -> [Message]
 makeMessages = L.sort . allMsgs . T.toList

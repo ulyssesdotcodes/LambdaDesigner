@@ -67,6 +67,14 @@ $(document).ready(function(){
     websocket.send(JSON.stringify(msg));
   });
 
+  $(".approve").click(function(e) {
+    var msg = {
+      type: 'approvevotes'
+    }
+
+    websocket.send(JSON.stringify(msg));
+  });
+
   websocket.onmessage = function(event) {
     var msg = JSON.parse(event.data);
     switch(msg.type) {
@@ -99,6 +107,7 @@ $(document).ready(function(){
 </div>
 
 <button class="start">Start</button>
+<button class="approve">Approve</button>
 <button class="vote" data-votenum="0"> Vote 1 </button>
 <button class="vote" data-votenum="1"> Vote 2 </button>
 <button class="vote" data-votenum="2"> Vote 3 </button>
