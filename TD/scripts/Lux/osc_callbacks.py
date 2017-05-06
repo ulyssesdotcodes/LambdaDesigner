@@ -28,10 +28,7 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
       return
 
     if op(addr) != None:
-      if op(addr).type == clazz[1] and op(addr).family == clazz[2]:
-        return
-      else:
-        op(addr).destroy()
+      op(addr).destroy()
 
     name = addr[(addr.rfind('/') + 1):]
     par = addr[:(addr.rfind('/'))]

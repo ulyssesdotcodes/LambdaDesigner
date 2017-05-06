@@ -10,8 +10,9 @@ import Prelude hiding (lookup)
 
 import Op
 
-import Control.Monad.Trans.State.Lazy
 import Control.Lens
+import Control.Monad.Trans.State.Lazy
+import Control.Monad
 import Data.Maybe
 import Sound.OSC
 import Sound.OSC.Transport.FD as OT
@@ -36,8 +37,9 @@ instance Ord Message where
   compare (Message (L.length . L.filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (L.length . L.filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
   compare (Message _ ((ASCII_String "create"):_)) _ = LT
   compare _ (Message _ ((ASCII_String "create"):_)) = GT
-  compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
+  compare (Message _ ((ASCII_String "command"):_)) (Message _ ((ASCII_String "connect"):_)) = LT
   compare (Message _ ((ASCII_String "command"):_)) _ = GT
+  compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
   compare _ _ = EQ
 
 parseParam :: (Monad m) => Tree a -> StateT Messages m ByteString
@@ -71,6 +73,12 @@ parseTree (BComp p f a) = do addr <- opsMessages p
                              modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
                              modify $ T.adjust ((:) (Connect 0 aaddr)) addr
                              return addr
+parseTree (Tox p mf) = do addr <- opsMessages p
+                          case parseTree <$> mf of
+                            Just c -> do caddr <- c
+                                         modify $ T.adjust ((:) (Connect 0 caddr)) addr
+                                         return addr
+                            Nothing -> return addr
 parseTree (FC fpars reset loop sel) = do messages <- get
                                          saddr <- evalStateT (parseTree $ N (SelectCHOP Nothing)) messages
                                          let sname = BS.append "fb_" $ BS.tail saddr

@@ -150,7 +150,9 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
                     }
          | OutSOP { _sopIns :: [Tree SOP]
                   }
-         | Sphere
+         | Sphere  { _sphereType :: Maybe (Tree Int)
+                   , _sopIns :: [Tree SOP]
+                   }
 
 data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
            | CircleTOP
@@ -163,6 +165,7 @@ data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
                          }
            | GLSLTOP { _glslTDat :: Tree DAT
                      , _glslTUniforms :: [(String, Vec4)]
+                     , _topResolution :: IVec2
                      , _topIns :: [Tree TOP]
                      }
            | LevelTOP { _levelOpacity :: Maybe (Tree Float)
@@ -181,7 +184,7 @@ data TOP = CHOPToTOP { _chopToTopChop :: Tree CHOP }
            | OutTOP { _topIns :: [Tree TOP] }
            | Ramp { _rampType :: Maybe (Tree Int)
                   , _rampPhase :: Maybe (Tree Float)
-                  , _rampResolution :: IVec2
+                  , _topResolution :: IVec2
                   , _rampValues :: Tree DAT
                   }
            | Render { _renderGeo :: Tree Geo
@@ -214,7 +217,8 @@ data Geo = Geo { _geoTranslate :: Vec3
 data Camera = Camera { _camTranslate :: Vec3
                      }
 
-data BaseCOMP = BaseCOMP
+data BaseCOMP = BaseCOMP { _externalTox :: Maybe (Tree ByteString)
+                         }
 
 data Light = Light
 
@@ -224,6 +228,7 @@ data Tree a where
   FT :: TOP -> Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP) -> Tree TOP
   Comp :: (Op a, Op b) => a -> Tree b -> Tree a
   BComp :: (Baseable a, Baseable b) => BaseCOMP -> (Tree a -> Tree b) -> Tree a -> Tree b
+  Tox :: (Op a, Op b) => BaseCOMP -> Maybe (Tree a) -> Tree b
   Fix :: (Op a) => ByteString -> Tree a -> Tree a
   PyExpr :: ByteString -> Tree a
   ChopChan :: ByteString -> Tree CHOP -> Tree Float
@@ -360,7 +365,7 @@ instance Op CHOP where
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
                                       , "type" <$$> _noiseCType
                                       , "period" <$$> _noiseCPeriod
-                                      ] ++ chopBasePars n
+                                      ] ++ chopBasePars n ++ vec3Map' "t" _noiseCTranslate
   pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
@@ -395,6 +400,9 @@ instance Op CHOP where
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
   commands _ = []
   connections (maybeToList . flip (^?) chopIns -> cs) = mconcat cs
+
+chopBasePars :: CHOP -> [(ByteString, (Tree ByteString))]
+chopBasePars c = catMaybes [ "timeslice" <$$> (c ^? chopTimeSlice . _Just)]
 
 instance Baseable CHOP where
   inOp = N $ InCHOP
@@ -468,6 +476,7 @@ instance Baseable MAT where
 
 instance Op SOP where
   pars (CircleSOP p a _) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
+  pars (Sphere p _) = catMaybes [ ("type" <$$> p) ]
   pars (NoiseSOP t _) = vec3Map' "t" t
   pars (CHOPToSOP c a r _) = ("chop", ResolveP c):(catMaybes [("attscope" <$$> a), ("mapping" <$$> r)])
   pars _ = []
@@ -475,7 +484,7 @@ instance Op SOP where
   opType (InSOP {}) = "inSop"
   opType (NoiseSOP {}) = "noiseSop"
   opType (OutSOP {}) = "outSop"
-  opType Sphere = "sphere"
+  opType (Sphere {}) = "sphere"
   opType (CHOPToSOP {}) = "chopToSop"
   connections (maybeToList . flip (^?) sopIns -> cs) = mconcat cs
 
@@ -487,7 +496,7 @@ instance Op TOP where
   pars (CHOPToTOP chop) = [("chop", ResolveP chop)]
   pars (CompositeTOP op _) = [("operand", Resolve op)]
   pars (FeedbackTOP {..}) = catMaybes [("top",) . ResolveP <$> _fbTop]
-  pars (GLSLTOP {..}) = (:) ("pixeldat", ResolveP _glslTDat) $
+  pars t@(GLSLTOP {..}) = (++) (("pixeldat", ResolveP _glslTDat):(topBasePars t)) $
     L.concatMap (\(i, (n, v)) -> (BS.pack $ "uniname" ++ show i, str n):vec4Map' ("value" ++ show i) v) $ L.zip [0..] _glslTUniforms
   pars (MovieFileIn file mode index) = ("file", file): (catMaybes [("playmode" <$$> mode) , ("index" <$$> index)])
   pars (Transform t s _) = vec2Map' "t" t ++ vec2Map' "s" s
@@ -519,6 +528,16 @@ instance Op TOP where
   opType (SelectTOP _) = "selectTop"
   connections (maybeToList . flip (^?) topIns -> cs) = mconcat cs
 
+topBasePars :: TOP -> [(ByteString, (Tree ByteString))]
+topBasePars c = catMaybes [ "resolutionw" <$$> (c ^? topResolution._1._Just)
+                          , "resolutionh" <$$> (c ^? topResolution._2._Just)
+                          , ("outputresolution",) <$> (fmap (const (Resolve $ int 9)) $ safeHead $
+                              catMaybes [c ^? topResolution._1._Just, c ^? topResolution._2._Just])
+                          ]
+safeHead :: [a] -> Maybe a
+safeHead [] = Nothing
+safeHead (x:xs) = Just x
+
 instance Baseable TOP where
   inOp = N $ InTOP
   outOp o = N $ OutTOP [o]
@@ -535,12 +554,11 @@ instance Op Light where
   opType Light = "light"
 
 instance Op BaseCOMP where
-  opType BaseCOMP = "base"
+  pars (BaseCOMP {..}) = catMaybes ["externaltox" <$$> _externalTox]
+  opType (BaseCOMP {}) = "base"
+  commands (BaseCOMP {..}) = maybeToList $ const (Pulse "reinitnet" "1" 1) <$> _externalTox
 
 -- Constructors
-
-chopBasePars :: CHOP -> [(ByteString, (Tree ByteString))]
-chopBasePars c = catMaybes [ "timeslice" <$$> (c ^? chopTimeSlice . _Just)]
 
 casti :: (Integral i) => Tree f -> Tree i
 casti = Cast (\fl -> BS.concat ["int(", fl, ")"])
@@ -674,7 +692,7 @@ noiseS' f = N <$> f . NoiseSOP emptyV3 . (:[])
 noiseS = noiseS' id
 
 sphere' :: (SOP -> SOP) -> Tree SOP
-sphere' f = N . f $ Sphere
+sphere' f = N . f $ Sphere Nothing []
 sphere = sphere' id
 
 outS :: Tree SOP -> Tree SOP
@@ -709,9 +727,12 @@ compT op = N <$> CompositeTOP (int op)
 feedbackT :: Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP) -> Tree TOP
 feedbackT = FT (FeedbackTOP Nothing [])
 
-glslT' :: (TOP -> TOP) -> Tree DAT -> Tree TOP
-glslT' f d = N . f $ GLSLTOP d [] []
+glslT' :: (TOP -> TOP) -> String -> [Tree TOP] -> Tree TOP
+glslT' f d ts = N . f $ GLSLTOP (fileD d) [] emptyV2 ts
 glslT = glslT' id
+
+glslTP :: String -> [(String, Vec4)] -> [Tree TOP] -> Tree TOP
+glslTP s us ts = glslT' (glslTUniforms .~ us) s ts
 
 render' :: (TOP -> TOP) -> Tree Geo -> Tree Camera -> Tree TOP
 render' f geo cam = N . f $ Render geo cam Nothing
@@ -753,4 +774,7 @@ light :: Tree Light
 light = N Light
 
 base :: (Baseable a, Baseable b) => (Tree a -> Tree b) -> Tree a -> Tree b
-base = BComp BaseCOMP
+base = BComp $ BaseCOMP Nothing
+
+tox :: (Op a, Op b) => String -> Maybe (Tree a) -> Tree b
+tox t = Tox $ BaseCOMP (Just $ str t)

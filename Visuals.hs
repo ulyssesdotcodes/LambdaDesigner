@@ -25,16 +25,34 @@ cTSMod tf s = chopToS' ((chopToSResample ?~ bool True) . (chopToSopAttrScope ?~ 
 
 amult t = math' ((mathAlign ?~ int 7) . (mathCombChops ?~ int 3)) [t, math' ((mathAddPost ?~ (float 1)) . (mathMult ?~ float 2)) [ain]]
 
-acirc = cTSMod amult (circleS' (circArc ?~ int 1))
+acirc = cTSMod amult (circleS' ((circArc ?~ int 1) . (circType ?~ int 2)))
 
-movingNoise s = noiseC' ((noiseCType ?~ int 2) . (noiseCPeriod ?~ float s))
+asphere = cTSMod amult $ sphere' (sphereType ?~ int 3)
 
-geom = geo' ((geoTranslate .~ (Just $ chopChan0 $ movingNoise 5, Just $ chopChan0 $ movingNoise 10, Just $ float  0)) .
+movingNoise s = noiseC' ((noiseCType ?~ int 2) .
+                         (noiseCPeriod ?~ float s) .
+                         (noiseCTranslate._2 ?~ seconds !* float 20) .
+                         (chopTimeSlice ?~ bool True))
+
+rendered = render' (renderLight ?~ light) geom cam
+
+fbr = feedbackT rendered (\t -> compT 0 [rendered, levelT' (levelOpacity ?~ float 0) t]) id
+
+go = run [outT $ fbr] mempty
+
+-------------------
+
+geom = sphereNoise
+
+movingSquiggly = geo' ((geoTranslate .~ (Just $ chopChan0 $ movingNoise 5, Just $ chopChan0 $ movingNoise 10, Just $ float  0)) .
             (geoScale.each ?~ float 0.3) .
             (geoMat ?~ constM (constColor .~ (Just $ osin $ seconds, Just $ osin $ (seconds !* float 2), Just $ osin $ (seconds !* chopChan0 volume)))))
        $ outS acirc
 
-rendered = render geom cam
-fbr = feedbackT rendered (\t -> compT 0 [rendered, levelT' (levelOpacity ?~ float 0.99) t]) id
+sphereNoise = geo' id $ outS asphere
 
-go = run [outT $ fbr] mempty
+------------------------
+
+scr = (++) "scripts/Visuals/"
+
+tdata v t = glslT' ((glslTUniforms .~ [("i_volume", emptyV4 & _1 ?~ v)]) . (topResolution._1 .~ (Just $ int 300))) (scr "audio_data.frag") [t]
