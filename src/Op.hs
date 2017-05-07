@@ -267,6 +267,9 @@ seconds = PyExpr "absTime.seconds"
 frames :: Tree Int
 frames = PyExpr "absTime.frame"
 
+scycle :: Float -> Float -> Tree Float
+scycle a b = (!+) (float b) $ seconds !% float a
+
 floor :: (Num n) => Tree n -> Tree n
 floor = pyMathOp "floor"
 
@@ -311,6 +314,9 @@ dimenMap = vec2Map ("w", "h")
 
 rgbMap :: String -> Vec3 -> [(ByteString, Tree ByteString)]
 rgbMap = vec3Map ("r", "g", "b")
+
+xV4 :: Tree Float -> Vec4
+xV4 x = emptyV4 & _1 ?~ x
 
 vec4Map :: (ByteString, ByteString, ByteString, ByteString) -> String -> Vec4 -> [(ByteString, Tree ByteString)]
 vec4Map (x, y, z, w) n (xv, yv, zv, wv) = catMaybes [ BS.append (pack n) x <$$> xv
@@ -731,8 +737,8 @@ glslT' :: (TOP -> TOP) -> String -> [Tree TOP] -> Tree TOP
 glslT' f d ts = N . f $ GLSLTOP (fileD d) [] emptyV2 ts
 glslT = glslT' id
 
-glslTP :: String -> [(String, Vec4)] -> [Tree TOP] -> Tree TOP
-glslTP s us ts = glslT' (glslTUniforms .~ us) s ts
+glslTP' :: (TOP -> TOP) -> String -> [(String, Vec4)] -> [Tree TOP] -> Tree TOP
+glslTP' f s us ts = glslT' ((glslTUniforms .~ us) . f) s ts
 
 render' :: (TOP -> TOP) -> Tree Geo -> Tree Camera -> Tree TOP
 render' f geo cam = N . f $ Render geo cam Nothing

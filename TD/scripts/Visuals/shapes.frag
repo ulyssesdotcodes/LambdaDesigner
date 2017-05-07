@@ -1,7 +1,6 @@
 #define PI 3.14159265359
 #define TWO_PI 6.28318530718
 
-uniform vec2 i_resolution;
 uniform float i_sides;
 uniform float i_width;
 uniform float i_size;
@@ -9,7 +8,7 @@ uniform float i_size;
 out vec4 fragColor;
 
 void main() {
-  vec2 uv = (vUV.st - vec2(0.5)) * 2 * i_resolution.xy / i_resolution.y;
+  vec2 uv = (vUV.st - vec2(0.5)) * 2 * uTDOutputInfo.res.zw * uTDOutputInfo.res.y;
 
   float a = atan(uv.x, uv.y) + PI;
   float r = TWO_PI/max(1, round(i_sides));

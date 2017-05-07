@@ -20,6 +20,7 @@ aspect = audioSpectrum $ audioIn
 aspecttex = chopToT $ aspect
 
 volume = analyze (int 6) ain
+volc = chopChan0 volume
 
 cTSMod tf s = chopToS' ((chopToSResample ?~ bool True) . (chopToSopAttrScope ?~ str "P") . (sopIns .~ [s])) (tf (sopToC s))
 
@@ -34,25 +35,34 @@ movingNoise s = noiseC' ((noiseCType ?~ int 2) .
                          (noiseCTranslate._2 ?~ seconds !* float 20) .
                          (chopTimeSlice ?~ bool True))
 
-rendered = render' (renderLight ?~ light) geom cam
-
-fbr = feedbackT rendered (\t -> compT 0 [rendered, levelT' (levelOpacity ?~ float 0) t]) id
-
-go = run [outT $ fbr] mempty
+go = run [outT $ fade movingSquiggly] mempty
 
 -------------------
 
-geom = sphereNoise
+sphereNoise = geo' id $ outS asphere
 
-movingSquiggly = geo' ((geoTranslate .~ (Just $ chopChan0 $ movingNoise 5, Just $ chopChan0 $ movingNoise 10, Just $ float  0)) .
+-- gens
+adata = tdata (float 1) atex
+shapes = frag "shapes.frag" [ ("i_size", xV4 $ float 0.2)
+                            , ("i_width", xV4 volc)
+                            , ("i_sides", xV4 $ floor $ scycle 3 10)
+                            ] []
+
+movingSquiggly = rendered $ geo' ((geoTranslate .~ (Just $ chopChan0 $ movingNoise 5, Just $ chopChan0 $ movingNoise 10, Just $ float  0)) .
             (geoScale.each ?~ float 0.3) .
             (geoMat ?~ constM (constColor .~ (Just $ osin $ seconds, Just $ osin $ (seconds !* float 2), Just $ osin $ (seconds !* chopChan0 volume)))))
        $ outS acirc
 
-sphereNoise = geo' id $ outS asphere
+-- effects
+
+fade t = feedbackT t (\t' -> compT 0 [t, levelT' (levelOpacity ?~ float 0.97) t']) id
 
 ------------------------
 
+tres = topResolution .~ (Just $ int 1920, Just $ int 1080)
 scr = (++) "scripts/Visuals/"
+frag s = glslTP' tres (scr s)
+rendered g = render' (renderLight ?~ light) g cam
+tdata v t = frag "audio_data.frag" [("i_volume", xV4 v)] [t]
 
-tdata v t = glslT' ((glslTUniforms .~ [("i_volume", emptyV4 & _1 ?~ v)]) . (topResolution._1 .~ (Just $ int 300))) (scr "audio_data.frag") [t]
+
