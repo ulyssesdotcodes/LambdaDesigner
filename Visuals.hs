@@ -30,12 +30,13 @@ acirc = cTSMod amult (circleS' ((circArc ?~ int 1) . (circType ?~ int 2)))
 
 asphere = cTSMod amult $ sphere' (sphereType ?~ int 3)
 
-movingNoise s = noiseC' ((noiseCType ?~ int 2) .
+mnoise s = noiseC' ((noiseCType ?~ int 2) .
                          (noiseCPeriod ?~ float s) .
                          (noiseCTranslate._2 ?~ seconds !* float 20) .
                          (chopTimeSlice ?~ bool True))
+mnoisec s = chopChan0 $ mnoise s
 
-go = run [outT $ fade movingSquiggly] mempty
+go = run [outT $ fade $ triggerops volume [movingSquiggly, adata]] mempty
 
 -------------------
 
@@ -48,18 +49,47 @@ shapes = frag "shapes.frag" [ ("i_size", xV4 $ float 0.2)
                             , ("i_sides", xV4 $ floor $ scycle 3 10)
                             ] []
 
-movingSquiggly = rendered $ geo' ((geoTranslate .~ (Just $ chopChan0 $ movingNoise 5, Just $ chopChan0 $ movingNoise 10, Just $ float  0)) .
+movingSquiggly = rendered $ geo' ((geoTranslate .~ (Just $ chopChan0 $ mnoise 5, Just $ chopChan0 $ mnoise 10, Just $ float  0)) .
             (geoScale.each ?~ float 0.3) .
             (geoMat ?~ constM (constColor .~ (Just $ osin $ seconds, Just $ osin $ (seconds !* float 2), Just $ osin $ (seconds !* chopChan0 volume)))))
        $ outS acirc
 
 -- effects
 
-fade t = feedbackT t (\t' -> compT 0 [t, levelT' (levelOpacity ?~ float 0.97) t']) id
+fade t = feedbackT t (\t' -> compT 0 [t, levelT' (levelOpacity ?~ float 0.96) t']) id
+brightness b = levelT' (levelBrightness ?~ b)
+edgesc c t = compT 0 [edges t, levelT' (levelOpacity ?~ c) t]
+littleplanet = frag "little_planet.frag" []
+lumidots = frag "lumidots.frag" []
+mirror t = compT 0 [flipT' ((flipx ?~ bool True) . (flipy ?~ bool True)) t, t]
+mosaic t s top = frag "mosaic.frag" [("uTime", xV4 t), ("uScale", xV4 s)] [top]
+noisedisplace d top = frag "noise_displace.frag" [("uTime", xV4 seconds), ("uDisplacement", xV4 d)] [top]
+repeatT r top = frag "repeat.frag" [("i_repeat", xV4 r)] [top]
+rotate r = transformT' (transformRotate ?~ r)
+scale s = transformT' (transformScale .~ s)
+scale' s = transformT' (transformScale .~ (Just s, Just s))
+strobe s top = frag "strobe.frag" [("uSpeed", xV4 s)] [top]
+translate t = transformT' (transformTranslate .~ t)
+translatex x = translate $ emptyV2 & _1 ?~ x
+translatey y = translate $ emptyV2 & _2 ?~ y
+
+-- combiners
+
+addops = compT 0
+fadeops f = switchT' (switchTBlend ?~ bool True) f
+multops = compT 27
+overops = compT 31
+triggerops f tops = switchT (chopChan0 $
+                             count' ((countThresh ?~ float 0.5) .
+                                     (countLimMax ?~ float (fromIntegral $ length tops)) .
+                                     (countLimType ?~ int 1)
+                                    ) f
+                            ) tops
+
 
 ------------------------
 
-tres = topResolution .~ (Just $ int 1920, Just $ int 1080)
+tres = (topResolution .~ (Just $ int 1920, Just $ int 1080)) . (pixelFormat ?~ int 3)
 scr = (++) "scripts/Visuals/"
 frag s = glslTP' tres (scr s)
 rendered g = render' (renderLight ?~ light) g cam

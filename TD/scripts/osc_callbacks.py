@@ -61,7 +61,7 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
         if pars[0].isMenu:
           pars[0].menuIndex = args[2]
         else:
-          pars[0].val = args[2]
+          pars[0].val = float(args[2])
       else:
         pars[0].expr = args[2]
 
