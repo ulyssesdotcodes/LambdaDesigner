@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Visuals where
 
 import Op
@@ -14,7 +15,7 @@ data VoteType = Movie | Effect deriving Eq
 data VoteEffect = VoteEffect VoteType BS.ByteString BS.ByteString BS.ByteString deriving Eq
 
 
-ain = audioIn
+ain = math' (mathMult ?~ float 7) [audioIn]
 atex = chopToT $ ain
 aspect = audioSpectrum $ audioIn
 aspecttex = chopToT $ aspect
@@ -36,7 +37,8 @@ mnoise s = noiseC' ((noiseCType ?~ int 2) .
                          (chopTimeSlice ?~ bool True))
 mnoisec s = chopChan0 $ mnoise s
 
-go = run [outT $ fade $ triggerops volume [movingSquiggly, adata]] mempty
+main =
+  run [outT $ palettemap neon volc $ fade $ adata] mempty
 
 -------------------
 
@@ -56,7 +58,7 @@ movingSquiggly = rendered $ geo' ((geoTranslate .~ (Just $ chopChan0 $ mnoise 5,
 
 -- effects
 
-fade t = feedbackT t (\t' -> compT 0 [t, levelT' (levelOpacity ?~ float 0.96) t']) id
+fade t = feedbackT t (\t' -> compT 0 [t, levelT' (levelOpacity ?~ float 0.99) t']) id
 brightness b = levelT' (levelBrightness ?~ b)
 edgesc c t = compT 0 [edges t, levelT' (levelOpacity ?~ c) t]
 littleplanet = frag "little_planet.frag" []
@@ -64,6 +66,8 @@ lumidots = frag "lumidots.frag" []
 mirror t = compT 0 [flipT' ((flipx ?~ bool True) . (flipy ?~ bool True)) t, t]
 mosaic t s top = frag "mosaic.frag" [("uTime", xV4 t), ("uScale", xV4 s)] [top]
 noisedisplace d top = frag "noise_displace.frag" [("uTime", xV4 seconds), ("uDisplacement", xV4 d)] [top]
+palettecycle p t = multops [crop' ((cropLeft ?~ seconds) . (cropRight ?~ seconds)) $ palette p, t]
+palettemap p o t = frag "palette_map.frag" [("uOffset", xV4 o), ("uSamples", xV4 $ float 16)] [t, palette p]
 repeatT r top = frag "repeat.frag" [("i_repeat", xV4 r)] [top]
 rotate r = transformT' (transformRotate ?~ r)
 scale s = transformT' (transformScale .~ s)
@@ -86,6 +90,9 @@ triggerops f tops = switchT (chopChan0 $
                                     ) f
                             ) tops
 
+-- palettes
+
+neon = Palette ["A9336B", "5F2F88", "CB673D", "87BB38"]
 
 ------------------------
 
@@ -94,5 +101,8 @@ scr = (++) "scripts/Visuals/"
 frag s = glslTP' tres (scr s)
 rendered g = render' (renderLight ?~ light) g cam
 tdata v t = frag "audio_data.frag" [("i_volume", xV4 v)] [t]
+data Palette = Palette [BS.ByteString]
+palette (Palette colors) = ramp' (topResolution .~ iv2 (128, 0)) . scriptD (scr "palette_mapper.py") . table . transpose
+  $ fromLists [colors]
 
 

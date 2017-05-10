@@ -9,5 +9,5 @@ void main() {
 
 	float clamped = clamp(20 * (0.05 - abs(vUV.y - audX)), 0, 1);
 
-	fragColor = vec4(vec3(clamped), 0);
+	fragColor = vec4(clamped);
 }

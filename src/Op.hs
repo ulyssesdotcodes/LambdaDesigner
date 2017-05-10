@@ -116,6 +116,9 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
          | InDAT
          | OutDAT { _datIns :: [Tree DAT]
                   }
+         | ScriptDAT { _scriptDatDat :: Tree DAT
+                     , _datIns :: [Tree DAT]
+                     }
          | SelectDAT { _selectDRI :: Maybe (Tree Int)
                      , _selectDRStartI :: Maybe (Tree Int)
                      , _selectDREndI :: Maybe (Tree Int)
@@ -163,6 +166,12 @@ data TOP = Blur { _blurSize :: Tree Float
            | CompositeTOP { _compTOperand :: Tree Int
                           , _topIns :: [Tree TOP]
                           }
+           | Crop { _cropLeft :: Maybe (Tree Float)
+                  , _cropRight :: Maybe (Tree Float)
+                  , _cropTop :: Maybe (Tree Float)
+                  , _cropBottom :: Maybe (Tree Float)
+                  , _topIns :: [Tree TOP]
+                  }
            | Displace { _topIns :: [Tree TOP] }
            | Edges { _topIns :: [Tree TOP] }
            | Flip { _flipx :: Maybe (Tree Bool)
@@ -337,6 +346,9 @@ rgbMap = vec3Map ("r", "g", "b")
 xV4 :: Tree Float -> Vec4
 xV4 x = emptyV4 & _1 ?~ x
 
+iv2 :: (Int, Int) -> IVec2
+iv2 (x, y) = (Just $ int x, Just $ int y)
+
 vec4Map :: (ByteString, ByteString, ByteString, ByteString) -> String -> Vec4 -> [(ByteString, Tree ByteString)]
 vec4Map (x, y, z, w) n (xv, yv, zv, wv) = catMaybes [ BS.append (pack n) x <$$> xv
                                                     , BS.append (pack n) y <$$> yv
@@ -442,8 +454,7 @@ instance Op DAT where
                                                                                     , ("valuechange",) . Resolve . Op.bool . const True <$> vc
                                                                                     ])
   pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . Op.bool . const True <$> _deTableChange])
-  pars (TextDAT {..}) = catMaybes [("file" <$$> _textFile)]
-  pars (TCPIPDAT m d f _) = ("callbacks", ResolveP d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
+  pars (ScriptDAT {..}) = [("callbacks", ResolveP _scriptDatDat)]
   pars (SelectDAT {..}) = maybe altChoice (\row -> [("rowindexstart", Resolve row), ("rowindexend", Resolve row), ("extractrows", Resolve $ int 2)]) _selectDRI ++ [("dat", ResolveP _selectDat)]
                           where
                             altChoice = catMaybes [ ("rownamestart" <$$> _selectDRStartN)
@@ -458,11 +469,14 @@ instance Op DAT where
                             chooseType _ (Just _) Nothing Nothing (Just _) = 3
                             chooseType _ Nothing (Just _) (Just _) Nothing = 4
                             chooseType _ _ _ _ _ = 0
+  pars (TextDAT {..}) = catMaybes [("file" <$$> _textFile)]
+  pars (TCPIPDAT m d f _) = ("callbacks", ResolveP d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
   pars _ = []
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opType (DatExec {}) = "datExec"
   opType (InDAT {}) = "inDat"
   opType (OutDAT {}) = "outDat"
+  opType (ScriptDAT {}) = "scriptDat"
   opType (SelectDAT {}) = "selectDat"
   opType (TextDAT {}) = "textDat"
   opType (Table _) = "table"
@@ -522,6 +536,11 @@ instance Op TOP where
   pars (Blur {..}) = [("size",) . Resolve $ _blurSize]
   pars (CHOPToTOP chop) = [("chop", ResolveP chop)]
   pars (CompositeTOP op _) = [("operand", Resolve op)]
+  pars (Crop {..}) = catMaybes [ "cropleft" <$$> _cropLeft
+                               , "cropright" <$$> _cropRight
+                               , "croptop" <$$> _cropTop
+                               , "cropbottom" <$$> _cropBottom
+                               ]
   pars (Flip {..}) = catMaybes ["flipx" <$$> _flipx, "flipy" <$$> _flipy, "flop" <$$> _flipFlop]
   pars (FeedbackTOP {..}) = catMaybes [("top",) . ResolveP <$> _fbTop]
   pars t@(GLSLTOP {..}) = (++) (("pixeldat", ResolveP _glslTDat):(topBasePars t)) $
@@ -531,7 +550,7 @@ instance Op TOP where
   pars (LevelTOP {..}) = catMaybes [("opacity" <$$> _levelOpacity), "brightness1" <$$> _levelBrightness]
   pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
-  pars (Ramp t p r dat) = ("dat", Resolve  dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
+  pars (Ramp t p r dat) = ("dat", ResolveP dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
   pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("light",) . ResolveP <$> _renderLight)
   pars (SelectTOP c) = catMaybes [("top" <$$> c)]
   pars _ = []
@@ -539,6 +558,7 @@ instance Op TOP where
   opType (Blur {}) = "blur"
   opType (CHOPToTOP _) = "chopToTop"
   opType (CompositeTOP {}) = "compositeTop"
+  opType (Crop {}) = "crop"
   opType (Displace {}) = "displace"
   opType (Edges {}) = "edges"
   opType (Flip {}) = "flip"
@@ -682,8 +702,8 @@ timer' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) (Just l) Nothi
 
 -- DATs
 
-table :: Matrix BS.ByteString -> Tree DAT
-table = N <$> Table
+cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree BS.ByteString
+cell = Cell
 
 chopExec' :: (DAT -> DAT) -> Tree CHOP -> Tree DAT
 chopExec' f chop = N $ f $ ChopExec chop Nothing Nothing Nothing Nothing Nothing
@@ -691,25 +711,25 @@ chopExec' f chop = N $ f $ ChopExec chop Nothing Nothing Nothing Nothing Nothing
 datExec' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 datExec' f d = N $ f $ DatExec d Nothing []
 
-cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree BS.ByteString
-cell = Cell
-
--- cellf :: (Integral a, Integral b, Floating f, Show f) => (Tree a, Tree b) -> Tree DAT -> Tree f
--- cellf (x, y) t = Cell x y (treePar t)
-
-textD' :: (DAT -> DAT) -> String -> Tree DAT
-textD' f t = N . f $ TextDAT (Just $ BS.pack t) Nothing []
-textD = textD' id
-
 fileD' :: (DAT -> DAT) -> String -> Tree DAT
 fileD' f file = N . f $ (TextDAT Nothing (Just . PyExpr $ BS.pack ("\"" ++ file ++ "\"")) [])
 fileD = fileD' id
 
+scriptD :: String -> Tree DAT -> Tree DAT
+scriptD file = N <$> ScriptDAT (fileD file) . (:[])
+
 selectD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 selectD' f t = N . f $ SelectDAT Nothing Nothing Nothing Nothing Nothing Nothing t
 
+table :: Matrix BS.ByteString -> Tree DAT
+table = N <$> Table
+
 tcpipD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 tcpipD' f d = N . f $ TCPIPDAT Nothing d Nothing []
+
+textD' :: (DAT -> DAT) -> String -> Tree DAT
+textD' f t = N . f $ TextDAT (Just $ BS.pack t) Nothing []
+textD = textD' id
 
 -- MATs
 
@@ -752,6 +772,9 @@ circleT' f = N . f $ CircleTOP
 compT :: Int -> [Tree TOP] -> Tree TOP
 compT op = N <$> CompositeTOP (int op)
 
+crop' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
+crop' f = N . f <$> Crop Nothing Nothing Nothing Nothing . (:[])
+
 displace :: Tree TOP -> Tree TOP -> Tree TOP
 displace a b = N $ Displace [a, b]
 
@@ -765,9 +788,10 @@ flipT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 flipT' f t = N . f $ Flip Nothing Nothing Nothing [t]
 
 
-glslT = glslT' id
 glslT' :: (TOP -> TOP) -> String -> [Tree TOP] -> Tree TOP
 glslT' f d ts = N . f $ GLSLTOP (fileD d) [] Nothing emptyV2 ts
+glslT = glslT' id
+
 glslTP' :: (TOP -> TOP) -> String -> [(String, Vec4)] -> [Tree TOP] -> Tree TOP
 glslTP' f s us ts = glslT' ((glslTUniforms .~ us) . f) s ts
 
@@ -787,8 +811,11 @@ nullT = N . NullTOP . (:[])
 outT :: Tree TOP -> Tree TOP
 outT = N <$> OutTOP . (:[])
 
-ramp :: [(Float, Float, Float, Float, Float)] -> Tree TOP
-ramp = N <$> (Ramp Nothing Nothing emptyV2) . table . fromLists . fmap (^..each) . ((:) ("pos", "r", "g", "b", "a")) . fmap ((over each) (BS.pack . show))
+ramp' :: (TOP -> TOP) -> Tree DAT -> Tree TOP
+ramp' f = N . f <$> (Ramp Nothing Nothing emptyV2)
+
+rampC' :: (TOP -> TOP) -> [(Float, Float, Float, Float, Float)] -> Tree TOP
+rampC' f = ramp' f . table . fromLists . fmap (^..each) . ((:) ("pos", "r", "g", "b", "a")) . fmap ((over each) (BS.pack . show))
 
 render = render' id
 render' :: (TOP -> TOP) -> Tree Geo -> Tree Camera -> Tree TOP
