@@ -25,6 +25,7 @@ import Data.Trie as T
 data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
                 | Parameter BS.ByteString BS.ByteString
+                | CustomPar BS.ByteString BS.ByteString
                 | TextContent BS.ByteString
                 | Command ByteString [ByteString]
                 | Fixed BS.ByteString
@@ -38,6 +39,8 @@ instance Ord Message where
   compare (Message _ ((ASCII_String "create"):_)) _ = LT
   compare _ (Message _ ((ASCII_String "create"):_)) = GT
   compare (Message _ ((ASCII_String "command"):_)) (Message _ ((ASCII_String "connect"):_)) = LT
+  compare (Message _ ((ASCII_String "custompar"):_)) _ = GT
+  compare _ (Message _ ((ASCII_String "custompar"):_)) = LT
   compare (Message _ ((ASCII_String "command"):_)) _ = GT
   compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
   compare _ _ = EQ
@@ -140,6 +143,10 @@ opsMessages a = do let ty = opType a
                                         let msg = Parameter k val
                                         modify $ T.adjust ((:) msg) addr
                                         return ()) (pars a)
+                   mapM_ (\(k, p) -> do val <- parseParam p
+                                        let msg = CustomPar k val
+                                        modify $ T.adjust ((:) msg) addr
+                                        return ()) (customPars a)
                    mapM_ (\(i, op) -> do a <- parseTree op
                                          let connect = Connect i a
                                          modify $ T.adjust ((:) connect) addr
@@ -174,6 +181,7 @@ makeMessages = L.sort . allMsgs . T.toList
                  addrMsgs addr ((Create ty):ms) = (Message (BS.unpack addr) [string "create", ASCII_String ty]):(addrMsgs addr ms)
                  addrMsgs addr ((Connect i caddr):ms) = (Message (BS.unpack addr) [string "connect", int32 i, ASCII_String caddr]):(addrMsgs addr ms)
                  addrMsgs addr ((Parameter k v):ms) = (Message (BS.unpack addr) [string "parameter", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
+                 addrMsgs addr ((CustomPar k v):ms) = (Message (BS.unpack addr) [string "custompar", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
                  addrMsgs addr ((Command c bs):ms) = (Message (BS.unpack addr) $ [string "command", ASCII_String c] ++ (ASCII_String <$> bs)):(addrMsgs addr ms)
                  addrMsgs addr ((TextContent content):ms) = (Message (BS.unpack addr) [string "text", ASCII_String content]):(addrMsgs addr ms)
                  addrMsgs addr ((Fixed _):ms) = addrMsgs addr ms

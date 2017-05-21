@@ -34,11 +34,19 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
       op(addr).destroy()
 
     # Special case things that can't have duplicates
-    if clazz[1] == 'audiodevin':
+    if clazz[1] == 'audiodevin' or clazz[1] == 'videodevin':
       if op(clazz[1]) == None:
         parent().create(clazz[0], clazz[1])
-      op(par).create(selectCHOP, name)
-      op(addr).par.chop = '/project1/' + clazz[1]
+      if clazz[2] == "CHOP":
+        selOp = selectCHOP
+        selPar = 'chop'
+      elif clazz[2] == "TOP":
+        selOp = selectTOP
+        selPar = 'top'
+
+      op(par).create(selOp, name)
+      op(addr).pars(selPar)[0].val = '/project1/' + clazz[1]
+      print(op(addr).pars(selPar)[0].val)
       return
 
     op(par).create(clazz[0], name)
@@ -54,7 +62,7 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
   elif args[0] == "connect" and op(addr):
     op("/project1/lambda" + args[2]).outputConnectors[0].connect(op(addr).inputConnectors[args[1]])
 
-  elif args[0] == "parameter" and op(addr):
+  elif (args[0] == "parameter" or args[0] == "custompar") and op(addr):
     pars = op(addr).pars(args[1])
     if len(pars) > 0:
       if isfloat(args[2]):

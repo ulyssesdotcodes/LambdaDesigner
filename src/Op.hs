@@ -19,6 +19,7 @@ import Data.Maybe
 import Data.ByteString.Char8 as BS
 import Data.List as L
 
+
 data CommandType = Pulse ByteString ByteString Int
                  | Store ByteString (Tree ByteString)
 
@@ -31,6 +32,8 @@ class Op a where
   connections _ = []
   pars :: a -> [(ByteString, Tree ByteString)]
   pars _ = []
+  customPars :: a -> [(ByteString, Tree ByteString)]
+  customPars _ = []
   text :: a -> Maybe ByteString
   text _ = Nothing
   opType :: a -> ByteString
@@ -42,6 +45,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                     , _chopIns :: [Tree CHOP]
                     }
           | AudioIn
+          | AudioFilter { _audioFilterPass :: Tree Int
+                        , _audioFilterCutoff :: Maybe (Tree Float)
+                        , _chopIns :: [Tree CHOP]
+                        }
           | AudioSpectrum { _chopIns :: [Tree CHOP] }
           | ConstantCHOP { _values :: [Tree Float] }
           | Count { _chopIns :: [Tree CHOP]
@@ -64,6 +71,9 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | Hold { _chopIns :: [Tree CHOP]
                  }
           | InCHOP
+          | Lag { _lagLag :: Vec2
+                , _chopIns :: [Tree CHOP]
+                }
           | Logic { _logicPreop :: Maybe (Tree Int)
                   , _logicConvert :: Maybe (Tree Int)
                   , _chopIns :: [Tree CHOP]
@@ -83,8 +93,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | NoiseCHOP { _chopTimeSlice :: Maybe (Tree Bool)
                       , _noiseCTranslate :: Vec3
                       , _noiseCRoughness :: Maybe (Tree Float)
+                      , _noiseCAmplitude :: Maybe (Tree Float)
                       , _noiseCType :: Maybe (Tree Int)
                       , _noiseCPeriod :: Maybe (Tree Float)
+                      , _noiseCChannels :: Maybe (Tree ByteString)
                       }
           | OutCHOP { _chopIns :: [Tree CHOP]
                     }
@@ -149,6 +161,11 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
                      , _sopIns :: [Tree SOP]
                      }
          | InSOP
+         | Metaball { _metaballRadius :: Vec3
+                    , _metaballCenter :: Vec3
+                    }
+         | MergeSOP { _sopIns :: [Tree SOP]
+                    }
          | NoiseSOP { _noiseSTranslate :: Vec3
                     , _sopIns :: [Tree SOP]
                     }
@@ -160,11 +177,13 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
 
 data TOP = Blur { _blurSize :: Tree Float
                 , _topIns :: [Tree TOP]
+                , _topPasses :: Maybe (Tree Int)
                 }
            | CHOPToTOP { _chopToTopChop :: Tree CHOP }
            | CircleTOP
            | CompositeTOP { _compTOperand :: Tree Int
                           , _topIns :: [Tree TOP]
+                          , _topPasses :: Maybe (Tree Int)
                           }
            | Crop { _cropLeft :: Maybe (Tree Float)
                   , _cropRight :: Maybe (Tree Float)
@@ -173,11 +192,14 @@ data TOP = Blur { _blurSize :: Tree Float
                   , _topIns :: [Tree TOP]
                   }
            | Displace { _topIns :: [Tree TOP] }
-           | Edges { _topIns :: [Tree TOP] }
+           | Edges { _topIns :: [Tree TOP]
+                   , _topPasses :: Maybe (Tree Int)
+                   }
            | Flip { _flipx :: Maybe (Tree Bool)
                   , _flipy :: Maybe (Tree Bool)
                   , _flipFlop :: Maybe (Tree Int)
                   , _topIns :: [Tree TOP]
+                  , _topPasses :: Maybe (Tree Int)
                   }
            | FeedbackTOP { _fbTop :: Maybe (Tree TOP)
                          , _topIns :: [Tree TOP]
@@ -187,6 +209,7 @@ data TOP = Blur { _blurSize :: Tree Float
                      , _pixelFormat :: Maybe (Tree Int)
                      , _topResolution :: IVec2
                      , _topIns :: [Tree TOP]
+                     , _topPasses :: Maybe (Tree Int)
                      }
            | LevelTOP { _levelOpacity :: Maybe (Tree Float)
                       , _levelBrightness :: Maybe (Tree Float)
@@ -196,6 +219,7 @@ data TOP = Blur { _blurSize :: Tree Float
            | MovieFileIn { _movieFileInFile :: Tree BS.ByteString
                          , _moviePlayMode :: Maybe (Tree Int)
                          , _movieIndex :: Maybe (Tree Int)
+                         , _topResolution :: IVec2
                          }
            | NoiseTOP { _noiseTMonochrome :: Maybe (Tree Bool)
                       , _noiseTResolution :: IVec2
@@ -218,14 +242,21 @@ data TOP = Blur { _blurSize :: Tree Float
                        , _switchTBlend :: Maybe (Tree Bool)
                        , _topIns :: [Tree TOP]
                        }
+           | TextTOP { _textText :: Tree ByteString
+                     , _topResolution :: IVec2
+                     }
            | Transform { _transformTranslate :: Vec2
+                       , _transformExtend :: Maybe (Tree Int)
                        , _transformScale :: Vec2
                        , _transformRotate :: Maybe (Tree Float)
+                       , _topPasses :: Maybe (Tree Int)
                        , _topIns :: [Tree TOP]
                        }
+           | VideoDeviceIn
 
 data MAT = ConstantMAT { _constColor :: Vec3
                        , _constAlpha :: Maybe (Tree Float)
+                       , _constMatMap :: Maybe (Tree TOP)
                        }
          | InMAT
          | OutMAT { _matIns :: [Tree MAT]
@@ -292,7 +323,7 @@ frames :: Tree Int
 frames = PyExpr "absTime.frame"
 
 scycle :: Float -> Float -> Tree Float
-scycle a b =float b !* ((float a !* seconds)!% float 1)
+scycle a b =float b !* ((float a !* seconds) !% float 1)
 
 sincycle :: Float -> Float -> Tree Float
 sincycle a b =float b !* ((osin' $ float a !* seconds) !% float 1)
@@ -313,8 +344,11 @@ pmax = Mod2 (\s t -> BS.concat ["max(", s, ", ", t, ")"])
 pyMathOp :: (Num n) => String -> Tree n -> Tree n
 pyMathOp s = Mod (\n -> BS.concat ["math.", pack s, "(", n, ")"])
 
+chopChan :: Int -> Tree CHOP -> Tree Float
+chopChan n = ChopChan (pack . show $ n)
+
 chopChan0 :: Tree CHOP -> Tree Float
-chopChan0 = ChopChan (pack . show $ 0)
+chopChan0 = chopChan 0
 
 chopChanName :: String -> Tree CHOP -> Tree Float
 chopChanName s = ChopChan (pack $ "\"" ++ s ++ "\"")
@@ -381,6 +415,8 @@ makeLenses ''Light
 
 instance Op CHOP where
   pars n@(Analyze {..}) = [("function", Resolve _analyzeFunc)]
+  pars n@(AudioFilter {..}) = [("filter", Resolve _audioFilterPass)] ++
+    catMaybes ["cutofflog" <$$> _audioFilterCutoff]
   pars n@(ConstantCHOP v) = L.zipWith (\i v' -> (BS.pack $ "value" ++ show i, Resolve v')) [0..] v ++ chopBasePars n
   pars n@(Count {..}) = catMaybes [ "threshup" <$$> _countThresh
                                   , "output" <$$> _countLimType
@@ -390,6 +426,7 @@ instance Op CHOP where
                                   ] ++ chopBasePars n
   pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames)]
   pars n@(Fan o off _) = catMaybes ["fanop" <$$> o, "alloff" <$$> off] ++ chopBasePars n
+  pars n@(Lag {..}) = vec2Map ("1", "2") "lag" _lagLag ++ chopBasePars n
   pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
   pars n@(Math {..}) = catMaybes [ "preoff" <$$> _mathAdd
                                  , "postoff" <$$> _mathAddPost
@@ -402,6 +439,8 @@ instance Op CHOP where
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
                                       , "type" <$$> _noiseCType
                                       , "period" <$$> _noiseCPeriod
+                                      , "amp" <$$> _noiseCAmplitude
+                                      , ("channelname",) <$> _noiseCChannels
                                       ] ++ chopBasePars n ++ vec3Map' "t" _noiseCTranslate
   pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
@@ -417,6 +456,7 @@ instance Op CHOP where
   pars _ = []
   opType (Analyze {}) = "analyze"
   opType (AudioIn {}) = "audioIn"
+  opType (AudioFilter {}) = "audioFilter"
   opType (AudioSpectrum {}) = "audioSpectrum"
   opType (ConstantCHOP {}) = "constantChop"
   opType (Count {}) = "count"
@@ -425,6 +465,7 @@ instance Op CHOP where
   opType (FeedbackCHOP _) = "feedbackChop"
   opType (Hold {}) = "hold"
   opType (InCHOP {}) = "inChop"
+  opType (Lag {}) = "lag"
   opType (Logic {}) = "logic"
   opType (Math {}) = "math"
   opType (MergeCHOP {}) = "mergeChop"
@@ -506,8 +547,9 @@ instance Baseable DAT where
   outOp o = N $ OutDAT [o]
 
 instance Op MAT where
-  pars (ConstantMAT rgb alpha) = catMaybes [("alpha" <$$> alpha)] ++ rgbMap "color" rgb
-  opType (ConstantMAT _ _) = "constMat"
+  pars (ConstantMAT rgb alpha cmap) = catMaybes [("alpha" <$$> alpha), ("colormap",) . ResolveP <$> cmap]
+    ++ rgbMap "color" rgb
+  opType (ConstantMAT {}) = "constMat"
   connections (maybeToList . flip (^?) matIns -> cs) = mconcat cs
 
 instance Baseable MAT where
@@ -517,11 +559,14 @@ instance Baseable MAT where
 instance Op SOP where
   pars (CircleSOP p a _) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
   pars (Sphere p _) = catMaybes [ ("type" <$$> p) ]
+  pars (Metaball {..}) = vec3Map' "rad" _metaballRadius ++ vec3Map' "t" _metaballCenter
   pars (NoiseSOP t _) = vec3Map' "t" t
   pars (CHOPToSOP c a r _) = ("chop", ResolveP c):(catMaybes [("attscope" <$$> a), ("mapping" <$$> r)])
   pars _ = []
   opType (CircleSOP {}) = "circleSop"
   opType (InSOP {}) = "inSop"
+  opType (MergeSOP {}) = "mergeSop"
+  opType (Metaball {}) = "metaball"
   opType (NoiseSOP {}) = "noiseSop"
   opType (OutSOP {}) = "outSop"
   opType (Sphere {}) = "sphere"
@@ -533,9 +578,9 @@ instance Baseable SOP where
   outOp o = N $ OutSOP [o]
 
 instance Op TOP where
-  pars (Blur {..}) = [("size",) . Resolve $ _blurSize]
+  pars t@(Blur {..}) = [("size",) . Resolve $ _blurSize] ++ topBasePars t
   pars (CHOPToTOP chop) = [("chop", ResolveP chop)]
-  pars (CompositeTOP op _) = [("operand", Resolve op)]
+  pars t@(CompositeTOP {..}) = [("operand", Resolve _compTOperand)] ++ topBasePars t
   pars (Crop {..}) = catMaybes [ "cropleft" <$$> _cropLeft
                                , "cropright" <$$> _cropRight
                                , "croptop" <$$> _cropTop
@@ -545,44 +590,51 @@ instance Op TOP where
   pars (FeedbackTOP {..}) = catMaybes [("top",) . ResolveP <$> _fbTop]
   pars t@(GLSLTOP {..}) = (++) (("pixeldat", ResolveP _glslTDat):(topBasePars t)) $
     L.concatMap (\(i, (n, v)) -> (BS.pack $ "uniname" ++ show i, str n):vec4Map' ("value" ++ show i) v) $ L.zip [0..] _glslTUniforms
-  pars (MovieFileIn file mode index) = ("file", file): (catMaybes [("playmode" <$$> mode) , ("index" <$$> index)])
-  pars (Transform {..}) = vec2Map' "t" _transformTranslate ++ vec2Map' "s" _transformScale ++ catMaybes ["rotate" <$$> _transformRotate]
+  pars t@(MovieFileIn file mode index _) = ("file", file):
+    (catMaybes [("playmode" <$$> (const (int 1) <$> index)) , ("index" <$$> index)]) ++ topBasePars t
   pars (LevelTOP {..}) = catMaybes [("opacity" <$$> _levelOpacity), "brightness1" <$$> _levelBrightness]
   pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
   pars (Ramp t p r dat) = ("dat", ResolveP dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
   pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("light",) . ResolveP <$> _renderLight)
   pars (SelectTOP c) = catMaybes [("top" <$$> c)]
+  pars t@(TextTOP {..}) = [("text", _textText)] ++ topBasePars t
+  pars t@(Transform {..}) = vec2Map' "t" _transformTranslate ++ vec2Map' "s" _transformScale ++
+    catMaybes [ "rotate" <$$> _transformRotate
+              , "extend" <$$> _transformExtend
+              ] ++ topBasePars t
   pars _ = []
 
   opType (Blur {}) = "blur"
   opType (CHOPToTOP _) = "chopToTop"
+  opType CircleTOP = "circleTop"
   opType (CompositeTOP {}) = "compositeTop"
   opType (Crop {}) = "crop"
   opType (Displace {}) = "displace"
   opType (Edges {}) = "edges"
+  opType (FeedbackTOP {}) = "feedbackTop"
   opType (Flip {}) = "flip"
   opType (GLSLTOP {}) = "glslTop"
   opType (InTOP {}) = "inTop"
-  opType (MovieFileIn _ _ _) = "movieFileIn"
-  -- opType (Render _ _ _) = "render"
-  opType (Transform {}) = "transform"
-  opType CircleTOP = "circleTop"
-  opType (FeedbackTOP {}) = "feedbackTop"
-  opType (OutTOP {})= "outTop"
-  opType (NullTOP {}) = "nullTop"
   opType (LevelTOP {}) = "levelTop"
+  opType (MovieFileIn {}) = "movieFileIn"
   opType (NoiseTOP _ _ _) = "noiseTop"
+  opType (NullTOP {}) = "nullTop"
+  opType (OutTOP {})= "outTop"
   opType (Ramp _ _ _ _) = "ramp"
   opType (Render {}) = "render"
-  opType (SwitchTOP {}) = "switchTop"
   opType (SelectTOP _) = "selectTop"
+  opType (SwitchTOP {}) = "switchTop"
+  opType (TextTOP {}) = "textTop"
+  opType (Transform {}) = "transform"
+  opType (VideoDeviceIn) = "videoDeviceIn"
   connections (maybeToList . flip (^?) topIns -> cs) = mconcat cs
 
 topBasePars :: TOP -> [(ByteString, (Tree ByteString))]
 topBasePars c = catMaybes [ "resolutionw" <$$> (c ^? topResolution._1._Just)
                           , "resolutionh" <$$> (c ^? topResolution._2._Just)
-                          , "format" <$$> (_pixelFormat c)
+                          , "format" <$$> (c ^? pixelFormat._Just)
+                          , "npasses" <$$> (c ^? topPasses._Just)
                           , ("outputresolution",) <$> (fmap (const (Resolve $ int 9)) $ safeHead $
                               catMaybes [c ^? topResolution._1._Just, c ^? topResolution._2._Just])
                           ]
@@ -606,7 +658,8 @@ instance Op Light where
   opType Light = "light"
 
 instance Op BaseCOMP where
-  pars (BaseCOMP {..}) = _baseParams ++ catMaybes ["externaltox" <$$> _externalTox]
+  pars (BaseCOMP {..}) = catMaybes ["externaltox" <$$> _externalTox]
+  customPars (BaseCOMP {..}) = _baseParams
   opType (BaseCOMP {}) = "base"
   commands (BaseCOMP {..}) = maybeToList $ const (Pulse "reinitnet" "1" 1) <$> _externalTox
 
@@ -625,6 +678,15 @@ analyze f c = N $ Analyze f [c]
 
 audioIn :: Tree CHOP
 audioIn = N $ AudioIn
+
+lowPass :: Tree CHOP -> Tree CHOP
+lowPass t = N $ AudioFilter (int 0) Nothing [t]
+
+highPass :: Tree CHOP -> Tree CHOP
+highPass t = N $ AudioFilter (int 1) Nothing [t]
+
+bandPass :: Tree Float -> Tree CHOP -> Tree CHOP
+bandPass b t = N $ AudioFilter (int 2) (Just (b !* float 4.5)) [t]
 
 audioSpectrum :: Tree CHOP -> Tree CHOP
 audioSpectrum t = N $ AudioSpectrum [t]
@@ -653,6 +715,11 @@ hold' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP -> Tree CHOP
 hold' f h t = N <$> f $ Hold [h, t]
 hold = hold' id
 
+lag' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
+lag' f = N . f <$> Lag emptyV2 . (:[])
+lag :: Tree Float -> Tree Float -> Tree CHOP -> Tree CHOP
+lag a b t = N $ Lag (Just a, Just b) [t]
+
 logic' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
@@ -668,7 +735,7 @@ mchan :: String -> Tree Float
 mchan s = chopChanName s $ N MidiIn
 
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
-noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing)
+noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing)
 noiseC = noiseC' id
 
 opsadd :: CHOP -> CHOP
@@ -733,14 +800,20 @@ textD = textD' id
 
 -- MATs
 
-constM :: (MAT -> MAT) -> Tree MAT
-constM f = N . f $ ConstantMAT emptyV3 Nothing
+constM' :: (MAT -> MAT) -> Tree MAT
+constM' f = N . f $ ConstantMAT emptyV3 Nothing Nothing
 
 -- SOPs
 
 circleS' :: (SOP -> SOP) -> Tree SOP
 circleS' f = N . f $ CircleSOP Nothing Nothing []
 circleS = circleS' id
+
+mergeS :: [Tree SOP] -> Tree SOP
+mergeS = N . MergeSOP
+
+metaball' :: (SOP -> SOP) -> Tree SOP
+metaball' f = N . f $ Metaball emptyV3 emptyV3
 
 noiseS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
 noiseS' f = N <$> f . NoiseSOP emptyV3 . (:[])
@@ -757,10 +830,10 @@ chopToS' :: (SOP -> SOP) -> Tree CHOP -> Tree SOP
 chopToS' f c = N . f $ CHOPToSOP c Nothing Nothing []
 chopToS = chopToS' id
 
--- Tops
+-- TOPs
 
-blur :: Tree Float -> Tree TOP -> Tree TOP
-blur f = N <$> Blur f . (:[])
+blur :: (TOP -> TOP) -> Tree Float -> Tree TOP -> Tree TOP
+blur f b t = N . f $ Blur b [t] Nothing
 
 chopToT :: Tree CHOP -> Tree TOP
 chopToT = N <$> CHOPToTOP
@@ -769,8 +842,9 @@ circleT = circleT' id
 circleT' :: (TOP -> TOP) -> Tree TOP
 circleT' f = N . f $ CircleTOP
 
-compT :: Int -> [Tree TOP] -> Tree TOP
-compT op = N <$> CompositeTOP (int op)
+compT' :: (TOP -> TOP) -> Int -> [Tree TOP] -> Tree TOP
+compT' f op ts = N . f $ CompositeTOP (int op) ts Nothing
+compT = compT' id
 
 crop' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 crop' f = N . f <$> Crop Nothing Nothing Nothing Nothing . (:[])
@@ -778,29 +852,31 @@ crop' f = N . f <$> Crop Nothing Nothing Nothing Nothing . (:[])
 displace :: Tree TOP -> Tree TOP -> Tree TOP
 displace a b = N $ Displace [a, b]
 
-edges :: Tree TOP -> Tree TOP
-edges a = N $ Edges [a]
+edges' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
+edges' f a = N . f $ Edges [a] Nothing
+edges = edges' id
 
 feedbackT :: Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP) -> Tree TOP
 feedbackT = FT (FeedbackTOP Nothing [])
 
 flipT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
-flipT' f t = N . f $ Flip Nothing Nothing Nothing [t]
+flipT' f t = N . f $ Flip Nothing Nothing Nothing [t] Nothing
 
 
 glslT' :: (TOP -> TOP) -> String -> [Tree TOP] -> Tree TOP
-glslT' f d ts = N . f $ GLSLTOP (fileD d) [] Nothing emptyV2 ts
+glslT' f d ts = N . f $ GLSLTOP (fileD d) [] Nothing emptyV2 ts Nothing
 glslT = glslT' id
 
 glslTP' :: (TOP -> TOP) -> String -> [(String, Vec4)] -> [Tree TOP] -> Tree TOP
 glslTP' f s us ts = glslT' ((glslTUniforms .~ us) . f) s ts
+glslTP = glslTP' id
 
 levelT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 levelT' f = N <$> f. LevelTOP Nothing Nothing . (:[])
 
 movieFileIn = movieFileIn' id
 movieFileIn' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
-movieFileIn' f file = N . f $ (MovieFileIn file Nothing Nothing)
+movieFileIn' f file = N . f $ (MovieFileIn file Nothing Nothing emptyV2)
 
 noiseT' :: (TOP -> TOP) -> Tree TOP
 noiseT' f = N $ f $ NoiseTOP Nothing emptyV2 emptyV3
@@ -828,9 +904,15 @@ switchT' :: (TOP -> TOP) -> Tree Float -> [Tree TOP] -> Tree TOP
 switchT' f i = N . f <$> SwitchTOP i Nothing
 switchT = switchT' id
 
+textT' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
+textT' f tx = N . f $ TextTOP tx emptyV2
+
 transformT = transformT' id
 transformT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
-transformT' f = N <$> f . (Transform emptyV2 emptyV2 Nothing) . (:[])
+transformT' f = N <$> f . (Transform emptyV2 Nothing emptyV2 Nothing Nothing) . (:[])
+
+vidIn :: Tree TOP
+vidIn = N $ VideoDeviceIn
 
 
 -- COMPs
