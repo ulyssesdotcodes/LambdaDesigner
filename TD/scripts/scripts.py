@@ -39,6 +39,7 @@ classes = {
   'math' : (mathCHOP, 'math', 'CHOP'),
   'mergeChop' : (mergeCHOP, 'merge', 'CHOP'),
   'midiIn' : (midiinmapCHOP, 'midiinmap', 'CHOP'),
+  'oscInChop' : (oscinCHOP, 'oscin', 'CHOP'),
   'outChop' : (outCHOP, 'out', 'CHOP'),
   'noiseChop' : (noiseCHOP, 'noise', 'CHOP'),
   'sopToChop' : (soptoCHOP, 'sopto', 'CHOP'),

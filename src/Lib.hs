@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Lib
     ( topRunner
     , run
@@ -26,9 +28,12 @@ run2 state tas tbs = do
   let state'' = unionR state' ms'
       msgs = makeMessages state'
       msgs' = makeMessages state''
+      isCommand (OSC.Message _ ((OSC.ASCII_String "command"):(OSC.ASCII_String "pulse"):(OSC.ASCII_String "loadonstartpulse"):_)) = True
+      isCommand _ = False
+      cmds = filter isCommand msgs'
   writeIORef state state''
   conn <- OSC.openUDP "127.0.0.1" 9002
-  sendMessages conn (msgs' \\ msgs)
+  sendMessages conn (sort $ cmds ++ (msgs' \\ msgs))
   close conn
   return ()
 

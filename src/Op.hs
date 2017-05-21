@@ -98,6 +98,8 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                       , _noiseCPeriod :: Maybe (Tree Float)
                       , _noiseCChannels :: Maybe (Tree ByteString)
                       }
+          | OscInCHOP { _oscInCPort :: Tree ByteString
+                      }
           | OutCHOP { _chopIns :: [Tree CHOP]
                     }
           | SelectCHOP { _selectCChop :: Maybe (Tree CHOP)
@@ -436,6 +438,7 @@ instance Op CHOP where
                                  , "gain" <$$> _mathMult
                                  ] ++ chopBasePars n
   pars n@(MergeCHOP {..}) = catMaybes [("duplicate" <$$> _mergeCDupes)] ++ chopBasePars n
+  pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
                                       , "type" <$$> _noiseCType
                                       , "period" <$$> _noiseCPeriod
@@ -471,6 +474,7 @@ instance Op CHOP where
   opType (MergeCHOP {}) = "mergeChop"
   opType (MidiIn {}) = "midiIn"
   opType (NoiseCHOP {}) = "noiseChop"
+  opType (OscInCHOP {}) = "oscInChop"
   opType (OutCHOP {}) = "outChop"
   opType (SwitchCHOP {}) = "switchChop"
   opType (SelectCHOP _) = "selectChop"
@@ -733,6 +737,9 @@ mergeC = mergeC' id
 
 mchan :: String -> Tree Float
 mchan s = chopChanName s $ N MidiIn
+
+oscin :: Int -> Tree CHOP
+oscin p = N $ OscInCHOP (Resolve $ int p)
 
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
 noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing)
