@@ -49,12 +49,15 @@ classes = {
 
   'chopToSop' : (choptoSOP, 'chopto', 'SOP'),
   'circleSop' : (circleSOP, 'circle', 'SOP'),
+  'lineSop' : (lineSOP, 'line', 'SOP'),
   'mergeSop' : (mergeSOP, 'merge', 'SOP'),
   'metaball' : (metaballSOP, 'metaball', 'SOP'),
   'noiseSop' : (noiseSOP, 'noise', 'SOP'),
   'inSop' : (inSOP, 'in', 'SOP'),
   'outSop' : (outSOP, 'out', 'SOP'),
   'sphere' : (sphereSOP, 'sphere', 'SOP'),
+  'sweep' : (sweepSOP, 'sweep', 'SOP'),
+  'transformSop' : (transformSOP, 'transform', 'SOP'),
 
   'inMat' : (inMAT, 'in', 'MAT'),
   'outMat' : (outMAT, 'out', 'MAT'),

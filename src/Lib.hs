@@ -39,4 +39,4 @@ run2 state tas tbs = do
 
 topRunner :: IO (Tree TOP -> IO ())
 topRunner = do init <- newIORef mempty
-               return $ run init . (:[])
+               return $ run init . (:[]) . outT

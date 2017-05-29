@@ -46,7 +46,6 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
 
       op(par).create(selOp, name)
       op(addr).pars(selPar)[0].val = '/project1/' + clazz[1]
-      print(op(addr).pars(selPar)[0].val)
       return
 
     op(par).create(clazz[0], name)
@@ -72,6 +71,8 @@ def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
           pars[0].val = float(args[2])
       else:
         pars[0].expr = args[2]
+    if args[1] == "externaltox":
+      op(addr).par.reinitnet.pulse()
 
   elif args[0] == "command" and op(addr):
     if args[1] == "pulse":

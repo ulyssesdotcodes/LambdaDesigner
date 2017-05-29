@@ -5,7 +5,7 @@ module Visuals where
 import Op
 import Lib
 
-import Prelude hiding (floor, mod)
+import Prelude hiding (floor, mod, lines)
 
 import Control.Lens
 import Data.Matrix
@@ -16,21 +16,24 @@ data VoteType = Movie | Effect deriving Eq
 data VoteEffect = VoteEffect VoteType BS.ByteString BS.ByteString BS.ByteString deriving Eq
 
 
-ain = math' (mathMult ?~ float 7) [audioIn]
+ain' m = math' (mathMult ?~ float m) [audioIn]
+ain = ain' 4
 atex = chopToT $ ain
 aspect = audioSpectrum $ audioIn
 aspecttex = chopToT $ aspect
 
 volume = analyze (int 6) ain
 volc = chopChan0 volume
-lowv = analyze (int 6) $ lowPass ain
-lowvc = chopChan0 lowv
+lowv' = analyze (int 6) . lowPass . ain'
+lowv = lowv' 4
+lowvc' = chopChan0 . lowv'
+lowvc = lowvc' 4
 highv = analyze (int 6) $ highPass ain
 highvc = chopChan0 highv
 bandv b = analyze (int 6) $ bandPass b ain
 bandvc = chopChan0 . bandv
 
-cTSMod tf s = chopToS' ((chopToSResample ?~ bool True) . (chopToSopAttrScope ?~ str "P") . (sopIns .~ [s])) (tf (sopToC s))
+cTSMod tf s = chopToS' ((chopToSResample ?~ bool True) . (chopToSopAttrScope ?~ str "P")) (tf (sopToC s)) (Just s)
 
 amult t = math' ((mathAlign ?~ int 7) . (mathCombChops ?~ int 3)) [t, math' ((mathAddPost ?~ (float 1)) . (mathMult ?~ float 2)) [ain]]
 
@@ -44,19 +47,19 @@ mnoise s = noiseC' ((noiseCType ?~ int 2) .
                          (chopTimeSlice ?~ bool True))
 mnoisec s = chopChan0 $ mnoise s
 
-launchmapping = strobe id (float 10 !* mchan "s1c")
-  $ scale' id (float 0.2 !* mchan "s1b")
+launchmapping = strobe (float 10 !* mchan "s1c")
+  $ scalexy (float 0.2 !* mchan "s1b")
   $ fade (mchan "s1")
   $ foldr (.) id (zipWith ($) (reverse effects) (reverse [1..(length effects)]))
   $ switchT (float (-1) !+ (chopChan0 $ hold buttons buttons))
           [adata (mchan "s1a" !* float 2), shapes (float 3 !+ scycle 1 3) (volc !* mchan "s2a") (mchan "s2b")]
 
-effects = [ \n -> palettecycle (passmchan n) neon
-          , \n -> translatex (passmchan n) (mchan ("s" ++ show n) !* seconds)
-          , \n -> paletterepeatT (passmchan n) neon (float 20 !* mchan ("s" ++ show n))
-          , \n -> mirror (passmchan n)
-          , \n -> mosaic (passmchan n) (seconds !* float 20) (float 60)
-          , \n -> blur (passmchan n) (float 56 !* mchan ("s" ++ show n))
+effects = [ \n -> palettecycle' (passmchan n) neon
+          , \n -> translatex' (passmchan n) (mchan ("s" ++ show n) !* seconds)
+          , \n -> paletterepeatT' (passmchan n) neon (float 20 !* mchan ("s" ++ show n))
+          , \n -> mirror' (passmchan n)
+          , \n -> mosaic' (passmchan n) (seconds !* float 20) (float 60)
+          , \n -> blur' (passmchan n) (float 56 !* mchan ("s" ++ show n))
           ]
 passmchan m = topPasses ?~ casti (mchan $ "b" ++ show m)
 
@@ -64,10 +67,10 @@ buttons = math' (mathCombChops ?~ int 1) $ mheld <$> [1..4]
 mheld n = constC [float (fromIntegral n) !* (mchan $ "b" ++ show (n + 8))]
 
 stresstest = fadeops (float 0.5) [
-       noisedisplace id (float 10) $ mosaic id (seconds !* float 20) (float 100) $
-       fade (float 0.96) $ blur id (float 128) $ palettecycle id neon $
+       noisedisplace (float 10) $ mosaic (seconds !* float 20) (float 100) $
+       fade (float 0.96) $ blur (float 128) $ palettecycle neon $
        flocking (float 0.5, float 0.5, float 1) (float 10 !* volc),
-       blur id (float 27) $
+       blur (float 27) $
        fade (float 0.99) $ flocking (float 0.3, float 0.5, float 1) (float 10 !* volc)]
 
 -------------------
@@ -81,7 +84,7 @@ flocking (c, s, a) sp = tox "toxes/Visuals/flockingGpu.tox" [ ("Cohesion", Resol
                                                             , ("Alignment", ResolveP a)
                                                             , ("Speed", ResolveP sp)
                                                             ] (Nothing :: Maybe (Tree TOP))
-lines w s = frag "lines.frag" [("i_width", xV4 w), ("i_spacing", xV4 s)]
+lines w s = frag "lines.frag" [("i_width", xV4 w), ("i_spacing", xV4 s)] []
 metaballs mat = let wrapJust n x = Just $ chopChan0 x !* float n
                     mball n r tx ty = metaball' ((metaballRadius .~ (wrapJust n r, wrapJust n r, wrapJust n r)) .
                                                 (metaballCenter .~ (Just tx, Just ty, Nothing)))
@@ -107,8 +110,9 @@ movingSquiggly = rendered $ geo' ((geoTranslate .~ (Just $ chopChan0 $ mnoise 5,
             (geoScale.each ?~ float 0.3) .
             (geoMat ?~ constM' (constColor .~ (Just $ osin $ seconds, Just $ osin $ (seconds !* float 2), Just $ osin $ (seconds !* chopChan0 volume)))))
        $ outS acirc
-particlemover v p s = tox "toxes/Visuals/particlemover.tox" [ ("Palette", ResolveP $ palette p)
+particlemover v a p s = tox "toxes/Visuals/particlemover.tox" [ ("Palette", ResolveP $ palette p)
                                                             , ("Vmult", ResolveP v)
+                                                            , ("Emitalpha", ResolveP a)
                                                             , ("Shape", ResolveP s)
                                                             ] (Nothing :: Maybe (Tree TOP))
 
@@ -127,25 +131,45 @@ stringtheory t a = frag "string_theory.frag" [ ("i_time", xV4 t)
 
 -- Effects
 
-fade f t = feedbackT t (\t' -> compT 0 [t, levelT' (levelOpacity ?~ f) t']) id
-brightness f b = levelT' (levelBrightness ?~ b)
-paletterepeatT f p r top = frag' f "color_repeat.frag" [("i_repeat", xV4 r)] [top, palette p]
-edgesc f c t = compT 0 [edges' f t, levelT' (levelOpacity ?~ c) t]
-littleplanet f = frag' f "little_planet.frag" []
-lumidots f = frag' f "lumidots.frag" []
-mirror f t = compT' f 0 [flipT' ((flipx ?~ bool True) . (flipy ?~ bool True)) t, t]
-mosaic f t s top = frag' f "mosaic.frag" [("uTime", xV4 t), ("uScale", xV4 s)] [top]
-noisedisplace f d top = frag' f "noise_displace.frag" [("uTime", xV4 seconds), ("uDisplacement", xV4 d)] [top]
-palettecycle f p t = compT' f 27 [crop' ((cropLeft ?~ seconds) . (cropRight ?~ seconds)) $ palette p, t]
-palettemap f p o t = frag' f "palette_map.frag" [("uOffset", xV4 o), ("uSamples", xV4 $ float 16)] [t, palette p]
-repeatT f r top = frag' f "repeat.frag" [("i_repeat", xV4 r)] [top]
-rotate f r = transformT' (transformRotate ?~ r)
-scale f s = transformT' (transformScale .~ s)
-scale' f s = transformT' (transformScale .~ (Just s, Just s))
-strobe f s top = frag' f "strobe.frag" [("uSpeed", xV4 s), ("uTime", xV4 seconds)] [top]
-translate f t = transformT' ((transformExtend ?~ int 3) . (transformTranslate .~ t) . f)
-translatex f x = translate f $ emptyV2 & _1 ?~ x
-translatey f y = translate f $ emptyV2 & _2 ?~ y
+fade' f o t = feedbackT t (\t' -> compT 0 [t, levelT' (levelOpacity ?~ o) t']) f
+fade = fade' id
+brightness' f b = levelT' (levelBrightness ?~ b)
+brightness = brightness' id
+--blur
+paletterepeatT' f p r top = frag' f "color_repeat.frag" [("i_repeat", xV4 r)] [top, palette p]
+paletterepeatT = paletterepeatT' id
+edgesc' f c t = compT 0 [edges' f t, levelT' (levelOpacity ?~ c) t]
+edgesc = edgesc' id
+littleplanet' f = frag' f "little_planet.frag" [] . (:[])
+littleplanet = littleplanet' id
+lumidots' f = frag' f "lumidots.frag" [] . (:[])
+lumidots = lumidots' id
+mirror' f t = compT' f 0 [flipT' ((flipx ?~ bool True) . (flipy ?~ bool True)) t, t]
+mirror = mirror' id
+mosaic' f t s top = frag' f "mosaic.frag" [("uTime", xV4 t), ("uScale", xV4 s)] [top]
+mosaic = mosaic' id
+noisedisplace' f d top = frag' f "noise_displace.frag" [("uTime", xV4 seconds), ("uDisplacement", xV4 d)] [top]
+noisedisplace = noisedisplace' id
+palettecycle' f p t = compT' f 27 [crop' ((cropLeft ?~ seconds) . (cropRight ?~ seconds)) $ palette p, t]
+palettecycle = palettecycle' id
+palettemap' f p o t = frag' f "palette_map.frag" [("uOffset", xV4 o), ("uSamples", xV4 $ float 16)] [t, palette p]
+palettemap = palettemap' id
+repeatT' f r top = frag' f "repeat.frag" [("i_repeat", xV4 r)] [top]
+repeatT = repeatT' id
+rotate' f r = transformT' (transformRotate ?~ r)
+rotate = rotate' id
+scale' f s = transformT' (transformScale .~ ((!+ (float 1)) <$> fst s, (!+ (float 1)) <$> snd s))
+scale = scale' id
+scalexy' f s = scale' f (Just s, Just s)
+scalexy = scalexy' id
+strobe' f s top = frag' f "strobe.frag" [("uSpeed", xV4 s), ("uTime", xV4 seconds)] [top]
+strobe = strobe' id
+translate' f t = transformT' ((transformExtend ?~ int 3) . (transformTranslate .~ t) . f)
+translate = translate' id
+translatex' f x = translate' f $ emptyV2 & _1 ?~ x
+translatex = translatex' id
+translatey' f y = translate' f $ emptyV2 & _2 ?~ y
+translatey = translatey' id
 
 -- combiners
 

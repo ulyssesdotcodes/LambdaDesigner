@@ -38,10 +38,10 @@ instance Ord Message where
   compare (Message (L.length . L.filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (L.length . L.filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
   compare (Message _ ((ASCII_String "create"):_)) _ = LT
   compare _ (Message _ ((ASCII_String "create"):_)) = GT
-  compare (Message _ ((ASCII_String "command"):_)) (Message _ ((ASCII_String "connect"):_)) = LT
   compare (Message _ ((ASCII_String "custompar"):_)) _ = GT
   compare _ (Message _ ((ASCII_String "custompar"):_)) = LT
   compare (Message _ ((ASCII_String "command"):_)) _ = GT
+  compare _ (Message _ ((ASCII_String "command"):_)) = LT
   compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
   compare _ _ = EQ
 

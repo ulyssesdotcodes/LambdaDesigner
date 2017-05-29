@@ -163,6 +163,7 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
                      , _sopIns :: [Tree SOP]
                      }
          | InSOP
+         | LineSOP
          | Metaball { _metaballRadius :: Vec3
                     , _metaballCenter :: Vec3
                     }
@@ -176,6 +177,11 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
          | Sphere  { _sphereType :: Maybe (Tree Int)
                    , _sopIns :: [Tree SOP]
                    }
+         | Sweep { _sopIns :: [Tree SOP]
+                 }
+         | TransformSOP { _transformSUniformScale :: Maybe (Tree Float)
+                        , _sopIns :: [Tree SOP]
+                        }
 
 data TOP = Blur { _blurSize :: Tree Float
                 , _topIns :: [Tree TOP]
@@ -247,7 +253,7 @@ data TOP = Blur { _blurSize :: Tree Float
            | TextTOP { _textText :: Tree ByteString
                      , _topResolution :: IVec2
                      }
-           | Transform { _transformTranslate :: Vec2
+           | TransformTOP { _transformTranslate :: Vec2
                        , _transformExtend :: Maybe (Tree Int)
                        , _transformScale :: Vec2
                        , _transformRotate :: Maybe (Tree Float)
@@ -562,19 +568,23 @@ instance Baseable MAT where
 
 instance Op SOP where
   pars (CircleSOP p a _) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
+  pars (CHOPToSOP c a r _) = ("chop", ResolveP c):(catMaybes [("attscope" <$$> a), ("mapping" <$$> r)])
   pars (Sphere p _) = catMaybes [ ("type" <$$> p) ]
   pars (Metaball {..}) = vec3Map' "rad" _metaballRadius ++ vec3Map' "t" _metaballCenter
   pars (NoiseSOP t _) = vec3Map' "t" t
-  pars (CHOPToSOP c a r _) = ("chop", ResolveP c):(catMaybes [("attscope" <$$> a), ("mapping" <$$> r)])
+  pars (TransformSOP {..}) = catMaybes ["scale" <$$> _transformSUniformScale]
   pars _ = []
+  opType (CHOPToSOP {}) = "chopToSop"
   opType (CircleSOP {}) = "circleSop"
   opType (InSOP {}) = "inSop"
+  opType (LineSOP {}) = "lineSop"
   opType (MergeSOP {}) = "mergeSop"
   opType (Metaball {}) = "metaball"
   opType (NoiseSOP {}) = "noiseSop"
   opType (OutSOP {}) = "outSop"
   opType (Sphere {}) = "sphere"
-  opType (CHOPToSOP {}) = "chopToSop"
+  opType (Sweep {}) = "sweep"
+  opType (TransformSOP {}) = "transformSop"
   connections (maybeToList . flip (^?) sopIns -> cs) = mconcat cs
 
 instance Baseable SOP where
@@ -603,7 +613,7 @@ instance Op TOP where
   pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("light",) . ResolveP <$> _renderLight)
   pars (SelectTOP c) = catMaybes [("top" <$$> c)]
   pars t@(TextTOP {..}) = [("text", _textText)] ++ topBasePars t
-  pars t@(Transform {..}) = vec2Map' "t" _transformTranslate ++ vec2Map' "s" _transformScale ++
+  pars t@(TransformTOP {..}) = vec2Map' "t" _transformTranslate ++ vec2Map' "s" _transformScale ++
     catMaybes [ "rotate" <$$> _transformRotate
               , "extend" <$$> _transformExtend
               ] ++ topBasePars t
@@ -630,7 +640,7 @@ instance Op TOP where
   opType (SelectTOP _) = "selectTop"
   opType (SwitchTOP {}) = "switchTop"
   opType (TextTOP {}) = "textTop"
-  opType (Transform {}) = "transform"
+  opType (TransformTOP {}) = "transform"
   opType (VideoDeviceIn) = "videoDeviceIn"
   connections (maybeToList . flip (^?) topIns -> cs) = mconcat cs
 
@@ -665,7 +675,7 @@ instance Op BaseCOMP where
   pars (BaseCOMP {..}) = catMaybes ["externaltox" <$$> _externalTox]
   customPars (BaseCOMP {..}) = _baseParams
   opType (BaseCOMP {}) = "base"
-  commands (BaseCOMP {..}) = maybeToList $ const (Pulse "reinitnet" "1" 1) <$> _externalTox
+  commands (BaseCOMP {..}) = []
 
 -- Constructors
 
@@ -816,6 +826,9 @@ circleS' :: (SOP -> SOP) -> Tree SOP
 circleS' f = N . f $ CircleSOP Nothing Nothing []
 circleS = circleS' id
 
+lineS :: Tree SOP
+lineS = N $ LineSOP
+
 mergeS :: [Tree SOP] -> Tree SOP
 mergeS = N . MergeSOP
 
@@ -830,17 +843,28 @@ sphere' :: (SOP -> SOP) -> Tree SOP
 sphere' f = N . f $ Sphere Nothing []
 sphere = sphere' id
 
+sweep :: Tree SOP -> Tree SOP -> Tree SOP
+sweep cross back = N $ Sweep [cross, back]
+
 outS :: Tree SOP -> Tree SOP
 outS = N <$> OutSOP . (:[])
 
-chopToS' :: (SOP -> SOP) -> Tree CHOP -> Tree SOP
-chopToS' f c = N . f $ CHOPToSOP c Nothing Nothing []
+chopToS' :: (SOP -> SOP) -> Tree CHOP -> Maybe (Tree SOP) -> Tree SOP
+chopToS' f c i = N . f $ CHOPToSOP c Nothing Nothing (maybeToList i)
 chopToS = chopToS' id
+
+transformS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
+transformS' f = N <$> f . (TransformSOP Nothing) . (:[])
+transformS = transformS' id
+
+scaleS :: Tree Float -> Tree SOP -> Tree SOP
+scaleS f s = transformS' (transformSUniformScale ?~ f) s
 
 -- TOPs
 
-blur :: (TOP -> TOP) -> Tree Float -> Tree TOP -> Tree TOP
-blur f b t = N . f $ Blur b [t] Nothing
+blur' :: (TOP -> TOP) -> Tree Float -> Tree TOP -> Tree TOP
+blur' f b t = N . f $ Blur b [t] Nothing
+blur = blur' id
 
 chopToT :: Tree CHOP -> Tree TOP
 chopToT = N <$> CHOPToTOP
@@ -914,9 +938,9 @@ switchT = switchT' id
 textT' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
 textT' f tx = N . f $ TextTOP tx emptyV2
 
-transformT = transformT' id
 transformT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
-transformT' f = N <$> f . (Transform emptyV2 Nothing emptyV2 Nothing Nothing) . (:[])
+transformT' f = N <$> f . (TransformTOP emptyV2 Nothing emptyV2 Nothing Nothing) . (:[])
+transformT = transformT' id
 
 vidIn :: Tree TOP
 vidIn = N $ VideoDeviceIn
