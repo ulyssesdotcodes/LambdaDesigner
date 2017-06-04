@@ -27,13 +27,13 @@ run2 state tas tbs = do
   ms' <- execStateT (mapM_ (\t -> do parseTree t) tbs) ms
   let state'' = unionR state' ms'
       msgs = makeMessages state'
-      msgs' = makeMessages state''
+      msgs' = makeMessages ms'
       isCommand (OSC.Message _ ((OSC.ASCII_String "command"):(OSC.ASCII_String "pulse"):(OSC.ASCII_String "loadonstartpulse"):_)) = True
       isCommand _ = False
       cmds = filter isCommand msgs'
   writeIORef state state''
   conn <- OSC.openUDP "127.0.0.1" 9002
-  sendMessages conn (sort $ cmds ++ (msgs' \\ msgs))
+  sendMessages conn (sort $ msgs')
   close conn
   return ()
 

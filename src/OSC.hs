@@ -1,8 +1,11 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module OSC where
 
@@ -11,25 +14,58 @@ import Prelude hiding (lookup)
 import Op
 
 import Control.Lens
+import Control.Lens.Cons
 import Control.Monad.Trans.State.Lazy
 import Control.Monad
 import Data.Maybe
+import Data.Text.Encoding
+import GHC.Generics
 import Sound.OSC
 import Sound.OSC.Transport.FD as OT
 
 import Data.ByteString.Char8 as BS
+import Data.ByteString.Lazy as BSL
 import Data.List as L
+import Data.List.Lens
 import Data.Map.Strict as M
 import Data.Trie as T
+
+import qualified Data.Aeson as A
+import qualified Data.Vector as V
+import qualified Data.Text as Tx
 
 data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
                 | Parameter BS.ByteString BS.ByteString
                 | CustomPar BS.ByteString BS.ByteString
                 | TextContent BS.ByteString
-                | Command ByteString [ByteString]
+                | Command BS.ByteString [BS.ByteString]
                 | Fixed BS.ByteString
                 deriving (Eq, Show)
+
+data JSONNode = JSONNode { _nodeType :: Tx.Text
+                         , _nodeConnections :: [(Int, Tx.Text)]
+                         , _nodeParameters :: Map Tx.Text Tx.Text
+                         , _nodeCommands :: [(Tx.Text, [Tx.Text])]
+                         , _nodeText :: Maybe Tx.Text
+                         }
+  deriving Generic
+
+makeLenses ''JSONNode
+emptyJsonNode = JSONNode "" [] mempty [] Nothing
+
+instance A.ToJSON JSONNode where
+  toJSON (JSONNode {..}) = A.object [ "ty" A..= _nodeType
+                                    , "connections" A..= (connsvalue _nodeConnections)
+                                    , "parameters" A..= _nodeParameters
+                                    , "commands" A..= comsvalue _nodeCommands
+                                    , "text" A..= _nodeText
+                                    ]
+    where
+      connsvalue cs = V.replicate (L.length cs) "" V.// cs
+      comsvalue = V.fromList . L.map (\a -> A.object ["command" A..= fst a, "args" A..= V.fromList (snd a)])
+  toEncoding = A.genericToEncoding A.defaultOptions
+
 
 type Messages = Trie [Messagable]
 
@@ -45,7 +81,7 @@ instance Ord Message where
   compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
   compare _ _ = EQ
 
-parseParam :: (Monad m) => Tree a -> StateT Messages m ByteString
+parseParam :: (Monad m) => Tree a -> StateT Messages m BS.ByteString
 parseParam t@(N p) = parseTree t >>= return . wrapOp
 parseParam t@(Comp {}) = parseTree t >>= return . wrapOp
 parseParam t@(FC {}) = parseTree t >>= return . wrapOp
@@ -53,10 +89,10 @@ parseParam t@(FT {}) = parseTree t >>= return . wrapOp
 parseParam t@(Fix {}) = parseTree t >>= return . wrapOp
 parseParam t = parseTree t
 
-wrapOp :: ByteString -> ByteString
+wrapOp :: BS.ByteString -> BS.ByteString
 wrapOp op = BS.concat ["op(\"", BS.tail op, "\")"]
 
-parseTree :: (Monad m) => Tree a -> StateT Messages m ByteString
+parseTree :: (Monad m) => Tree a -> StateT Messages m BS.ByteString
 parseTree (N p) = opsMessages p
 parseTree (Comp p child) = do addr <- opsMessages p
                               tr <- execStateT (parseTree child) T.empty
@@ -124,12 +160,12 @@ parseTree (Resolve r) = parseTree r
 parseTree (ResolveP r) = parseParam r
 
 parseCommand :: (Monad m) => CommandType -> StateT Messages m Messagable
-parseCommand (Pulse bs v f) = pure $ Command "pulse" [bs, v, pack $ show f]
+parseCommand (Pulse bs v f) = pure $ Command "pulse" [bs, v, BS.pack $ show f]
 parseCommand (Store bs t) = do ttype <- parseParam t
                                return $ Command "store" [bs, ttype]
 
 
-opsMessages :: (Monad m, Op a) => a -> StateT Messages m ByteString
+opsMessages :: (Monad m, Op a) => a -> StateT Messages m BS.ByteString
 opsMessages a = do let ty = opType a
                    messages <- get
                    let addr = findEmpty ty messages
@@ -167,26 +203,42 @@ removeDuplicates addr ty = do messages <- get
                                                      return maddr
                                 _ -> return addr
 
-findEmpty :: ByteString -> Messages -> BS.ByteString
+findEmpty :: BS.ByteString -> Messages -> BS.ByteString
 findEmpty ty ms = BS.concat ["/", ty, "_", BS.pack . findKey 0 . L.map BS.unpack . L.sort . T.keys $ submap (BS.append "/" ty) ms]
   where
     findKey n [] = show n
     findKey n (x:xs) = if (L.tail $ L.dropWhile (/= '_') x) == show n then findKey (n + 1) xs else show n
 
 makeMessages :: Messages -> [Message]
-makeMessages = L.sort . allMsgs . T.toList
-               where
-                 allMsgs ((addr, msgs):ms) = (addrMsgs addr msgs) ++ allMsgs ms
-                 allMsgs [] = []
-                 addrMsgs addr ((Create ty):ms) = (Message (BS.unpack addr) [string "create", ASCII_String ty]):(addrMsgs addr ms)
-                 addrMsgs addr ((Connect i caddr):ms) = (Message (BS.unpack addr) [string "connect", int32 i, ASCII_String caddr]):(addrMsgs addr ms)
-                 addrMsgs addr ((Parameter k v):ms) = (Message (BS.unpack addr) [string "parameter", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
-                 addrMsgs addr ((CustomPar k v):ms) = (Message (BS.unpack addr) [string "custompar", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
-                 addrMsgs addr ((Command c bs):ms) = (Message (BS.unpack addr) $ [string "command", ASCII_String c] ++ (ASCII_String <$> bs)):(addrMsgs addr ms)
-                 addrMsgs addr ((TextContent content):ms) = (Message (BS.unpack addr) [string "text", ASCII_String content]):(addrMsgs addr ms)
-                 addrMsgs addr ((Fixed _):ms) = addrMsgs addr ms
-                 addrMsgs _ [] = []
+-- makeMessages = L.sort . allMsgs . T.toList
+--                where
+--                  allMsgs ((addr, msgs):ms) = (addrMsgs addr msgs) ++ allMsgs ms
+--                  allMsgs [] = []
+--                  addrMsgs addr ((Create ty):ms) = (Message (BS.unpack addr) [string "create", ASCII_String ty]):(addrMsgs addr ms)
+--                  addrMsgs addr ((Connect i caddr):ms) = (Message (BS.unpack addr) [string "connect", int32 i, ASCII_String caddr]):(addrMsgs addr ms)
+--                  addrMsgs addr ((Parameter k v):ms) = (Message (BS.unpack addr) [string "parameter", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
+--                  addrMsgs addr ((CustomPar k v):ms) = (Message (BS.unpack addr) [string "custompar", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
+--                  addrMsgs addr ((Command c bs):ms) = (Message (BS.unpack addr) $ [string "command", ASCII_String c] ++ (ASCII_String <$> bs)):(addrMsgs addr ms)
+--                  addrMsgs addr ((TextContent content):ms) = (Message (BS.unpack addr) [string "text", ASCII_String content]):(addrMsgs addr ms)
+--                  addrMsgs addr ((Fixed _):ms) = addrMsgs addr ms
+--                  addrMsgs _ [] = []
 
+makeMessages msgs = [Message ("/json") [ASCII_String $ BSL.toStrict . A.encode $ A.toJSON . A.object $
+                                        L.map (\(k, v) -> decodeUtf8 k A..= jsonNode v) $ T.toList msgs]]
+
+jsonNode :: [Messagable] -> JSONNode
+jsonNode = L.foldl modmsg emptyJsonNode
+  where
+    modmsg jsnode (Create (Tx.pack . BS.unpack -> t)) = jsnode & nodeType .~ t
+    modmsg jsnode (Connect i (Tx.pack . BS.unpack -> c)) = jsnode & nodeConnections %~ \cs -> (i, c):cs
+    modmsg jsnode (Parameter (Tx.pack . BS.unpack -> k) (Tx.pack . BS.unpack -> v)) =
+      jsnode & nodeParameters %~ M.insert k v
+    modmsg jsnode (CustomPar (Tx.pack . BS.unpack -> k) (Tx.pack . BS.unpack -> v)) =
+      jsnode & nodeParameters %~ M.insert k v
+    modmsg jsnode (Command (Tx.pack . BS.unpack -> c) (L.map (Tx.pack . BS.unpack) -> as)) =
+      jsnode & nodeCommands %~ \cs -> (c, as):cs
+    modmsg jsnode (TextContent (Tx.pack . BS.unpack -> c)) = jsnode & nodeText ?~ c
+    modmsg jsnode _ = jsnode
 
 sendMessages :: UDP -> [Message] -> IO ()
 sendMessages conn ms = OT.sendOSC conn $ Bundle 0 $ ms

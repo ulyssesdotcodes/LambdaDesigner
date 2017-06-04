@@ -18,8 +18,13 @@
 #
 
 import scripts
+import json
 
 def receiveOSC(dat, rowIndex, message, bytes, timeStamp, address, args, peer):
+  if address == "/json":
+    scripts.apply(json.loads(args[0]))
+    return
+
   addr = "/project1/lambda" + address
   if args[0] == "create":
     clazz = scripts.getClass(args[1], 'none')

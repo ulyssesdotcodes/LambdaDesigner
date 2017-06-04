@@ -187,6 +187,7 @@ triggerops f tops = switchT (chopChan0 $
 -- palettes
 
 neon = Palette ["A9336B", "5F2F88", "CB673D", "87BB38"]
+fire = Palette ["f07f13", "800909", "f27d0c", "fdcf58"]
 
 ------------------------
 
