@@ -103,19 +103,23 @@ def apply(newState):
   #   items = state.items()
 
   for diffi in list(reversed(list(ddiff))):
-    print(diffi)
-    splits = diffi[1].split('.')
+    splits = diffi[1].split('.') if isinstance(diffi[1], str) else diffi[1]
     if diffi[1] == '':
       if diffi[0] == 'add':
         addAll(diffi[2])
       elif diffi[0] == 'remove':
         for key,value in diffi[2]:
-          op("/project1/lambda" + key).destroy()
+          curop = op("/project1/lambda" + key)
+          if curop != None:
+            curop.destroy()
     elif splits[1] == 'connections':
-      item = dot_lookup(state, diffi[1], parent=True)
+      concatname = [str(x) for x in diffi[1] if isinstance(x, str)]
+      diffip = diffi[1] if isinstance(diffi[1], str) or diffi[1] == '' else ".".join(concatname)
+      item = dot_lookup(state, diffip, parent=True)
       curop = op(getName(splits[0]))
       for connector in curop.inputConnectors:
         connector.disconnect()
+      print(item)
       for i, conn in enumerate(item['connections']):
         op(getName(conn)).outputConnectors[0].connect(curop.inputConnectors[i])
     elif splits[1] == 'parameters':
@@ -188,6 +192,7 @@ def createOp(addr, ty):
       selPar = 'top'
 
     op(par).create(selOp, name)
+    print(addr)
     op(addr).pars(selPar)[0].val = '/project1/' + clazz[1]
   else:
     op(par).create(clazz[0], name)
