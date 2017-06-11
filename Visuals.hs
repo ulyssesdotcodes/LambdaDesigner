@@ -69,9 +69,9 @@ mheld n = constC [float (fromIntegral n) !* (mchan $ "b" ++ show (n + 8))]
 stresstest = fadeops (float 0.5) [
        noisedisplace (float 10) $ mosaic (seconds !* float 20) (float 100) $
        fade (float 0.96) $ blur (float 128) $ palettecycle neon $
-       flocking (float 0.5, float 0.5, float 1) (float 10 !* volc),
+       flocking (float 0.5, float 1) (float 10 !* volc),
        blur (float 27) $
-       fade (float 0.99) $ flocking (float 0.3, float 0.5, float 1) (float 10 !* volc)]
+       fade (float 0.99) $ flocking (float 0.4, float 1) (float 10 !* volc)]
 
 -------------------
 
@@ -79,9 +79,9 @@ sphereNoise = geo' id $ outS asphere
 
 -- Gens
 adata m = tdata m atex
-flocking (c, s, a) sp = tox "toxes/Visuals/flockingGpu.tox" [ ("Cohesion", ResolveP c)
+flocking (c, s) sp = tox "toxes/Visuals/flockingGpu.tox" [ ("Cohesion", ResolveP c)
                                                             , ("Separation", ResolveP s)
-                                                            , ("Alignment", ResolveP a)
+                                                            , ("Alignment", ResolveP c)
                                                             , ("Speed", ResolveP sp)
                                                             ] (Nothing :: Maybe (Tree TOP))
 lines w s = frag "lines.frag" [("i_width", xV4 w), ("i_spacing", xV4 s)] []

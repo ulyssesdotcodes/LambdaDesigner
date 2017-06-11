@@ -92,14 +92,14 @@ effectRunner t = datExec' ((datVars .~ [("base", Resolve movieout), ("voteResult
 
 --Server
 
-server = fix "server" $
-  fileD' (datVars .~ [ ("website", Resolve website)
+server = fix "server"
+  (fileD' (datVars .~ [ ("website", Resolve website)
                      , ("control", Resolve control)
                      , ("timer", Resolve voteTimer)
                      , ("movieTimer", Resolve movieTimer)
                      , ("base", Resolve movieout)
                      , ("outf", Resolve finalout)
-                     ] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums) "scripts/Lux/server.py"
+                     ] ++ zipWith (\i v -> (BS.pack $ "vote" ++ show i, Resolve v)) [0..] voteNums) "scripts/Lux/server.py")
         & tcpipD' ((tcpipMode ?~ (int 1)) . (tcpipCallbackFormat ?~ (int 2)))
 
 peers = fix "myPeers" $ textD ""

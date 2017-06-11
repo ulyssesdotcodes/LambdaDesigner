@@ -94,13 +94,6 @@ def apply(newState):
   state = newState
   ddiff = diff(prevState, state)
   diffs.append(ddiff)
-  # items = []
-  # if len(states) > 0:
-  #   ddiff = DeepDiff(states[-1], newState, view='tree')
-  #   if 'dictionary_items_added' in ddiff:
-  #     items = [a.pop().t2 for a in ddiff['dictionary_items_added']]
-  # else:
-  #   items = state.items()
 
   for diffi in list(reversed(list(ddiff))):
     splits = diffi[1].split('.') if isinstance(diffi[1], str) else diffi[1]
@@ -119,7 +112,6 @@ def apply(newState):
       curop = op(getName(splits[0]))
       for connector in curop.inputConnectors:
         connector.disconnect()
-      print(item)
       for i, conn in enumerate(item['connections']):
         op(getName(conn)).outputConnectors[0].connect(curop.inputConnectors[i])
     elif splits[1] == 'parameters':
@@ -129,7 +121,8 @@ def apply(newState):
           addParameter(curop, k, v)
       elif diffi[0] == 'change':
         addParameter(curop, splits[2], diffi[2][1])
-
+    elif splits[1] == 'text':
+      op(getName(splits[0])).text = diffi[2][1]
 
 def getName(name):
   return "/project1/lambda" + name
@@ -163,6 +156,8 @@ def addAll(state):
       connections.extend([c, addr, i] for i,c in enumerate(value['connections']))
 
   for conn in connections:
+    if conn[0] == '':
+      continue
     if conn[2] == 0:
       for connector in op(conn[1]).inputConnectors:
         connector.disconnect()
@@ -192,7 +187,6 @@ def createOp(addr, ty):
       selPar = 'top'
 
     op(par).create(selOp, name)
-    print(addr)
     op(addr).pars(selPar)[0].val = '/project1/' + clazz[1]
   else:
     op(par).create(clazz[0], name)
@@ -224,7 +218,7 @@ def addParameter(newOp, name, value):
   # Special case loading tox as soon as we know source
   if name == "externaltox":
     newOp.par.reinitnet.pulse()
-  elif name == 'file':
+  elif name == 'file' and newOp.type == "text":
     newOp.par.loadonstartpulse.pulse()
 
 def runCommand(newOp, command, args):
