@@ -451,7 +451,7 @@ instance Op CHOP where
                                       , "amp" <$$> _noiseCAmplitude
                                       , ("channelname",) <$> _noiseCChannels
                                       ] ++ chopBasePars n ++ vec3Map' "t" _noiseCTranslate
-  pars n@(SelectCHOP c) = catMaybes [("chop" <$$> c)] ++ chopBasePars n
+  pars n@(SelectCHOP c) = catMaybes [(("chop",) . ResolveP <$> c)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
   pars n@(Timer {..}) = catMaybes [ ("segdat",) . ResolveP <$> _timerSegments
@@ -611,7 +611,7 @@ instance Op TOP where
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
   pars (Ramp t p r dat) = ("dat", ResolveP dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
   pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("light",) . ResolveP <$> _renderLight)
-  pars (SelectTOP c) = catMaybes [("top" <$$> c)]
+  pars (SelectTOP c) = catMaybes [("top",) . ResolveP <$> c]
   pars t@(TextTOP {..}) = [("text", _textText)] ++ topBasePars t
   pars t@(TransformTOP {..}) = vec2Map' "t" _transformTranslate ++ vec2Map' "s" _transformScale ++
     catMaybes [ "rotate" <$$> _transformRotate

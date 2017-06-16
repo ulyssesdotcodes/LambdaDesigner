@@ -11,6 +11,8 @@ module OSC where
 
 import Prelude hiding (lookup)
 
+import Debug.Trace
+
 import Op
 
 import Control.Lens
@@ -36,7 +38,9 @@ import qualified Data.Text as Tx
 
 data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
+                | RevConnect Int BS.ByteString
                 | Parameter BS.ByteString BS.ByteString
+                | RevParameter BS.ByteString BS.ByteString
                 | CustomPar BS.ByteString BS.ByteString
                 | TextContent BS.ByteString
                 | Command BS.ByteString [BS.ByteString]
@@ -118,17 +122,23 @@ parseTree (Tox p mf) = do addr <- opsMessages p
                                          modify $ T.adjust ((:) (Connect 0 caddr)) addr
                                          return addr
                             Nothing -> return addr
-parseTree (FC fpars reset loop sel) = do messages <- get
-                                         saddr <- evalStateT (parseTree $ N (SelectCHOP Nothing)) messages
-                                         let sname = BS.append "fb_" $ BS.tail saddr
-                                         laddr <- parseTree (loop $ N $ fpars & chopIns .~ [sel $ fix sname $ N (SelectCHOP Nothing), reset])
-                                         modify $ T.adjust ((:) (Parameter "chop" $ wrapOp laddr)) $ BS.append "/" sname
+parseTree (FC fpars reset loop sel) = do faddr <- parseTree $ N $ fpars & chopIns .~ [reset]
+                                         let fname = BS.tail faddr
+                                         laddr <- parseTree (loop $ fix fname $ N $ SelectCHOP Nothing)
+                                         let lname = BS.tail laddr
+                                         saddr <- parseTree $ sel $ N (SelectCHOP $ Just $ fix lname $ N $ SelectCHOP Nothing)
+                                         let sname = BS.tail saddr
+                                         modify $ T.adjust ((:) (RevConnect 0 faddr)) saddr
+                                         removeDuplicates saddr
                                          return laddr
-parseTree (FT fpars reset loop sel) = do messages <- get
-                                         saddr <- evalStateT (parseTree $ N (SelectTOP Nothing)) messages
-                                         let sname = BS.append "fb_" $ BS.tail saddr
-                                         laddr <- parseTree (loop $ N $ fpars & topIns .~ [reset] & fbTop ?~ sel (fix sname (N $ SelectTOP Nothing)))
-                                         modify $ T.adjust ((:) (Parameter "top" $ wrapOp laddr)) $ BS.append "/" sname
+parseTree (FT fpars reset loop sel) = do faddr <- parseTree $ N $ fpars & topIns .~ [reset]
+                                         let fname = BS.tail faddr
+                                         laddr <- parseTree (loop $ fix fname $ N $ SelectTOP Nothing)
+                                         let lname = BS.tail laddr
+                                         saddr <- parseTree $ sel $ N (SelectTOP $ Just $ fix lname $ N $ SelectTOP Nothing)
+                                         let sname = BS.tail saddr
+                                         modify $ T.adjust ((:) (RevParameter "top" faddr)) saddr
+                                         removeDuplicates saddr
                                          return laddr
 parseTree (Fix name op) = do messages <- get
                              let name' = BS.append "/" name
@@ -190,18 +200,18 @@ opsMessages a = do let ty = opType a
                    mapM_ (\c -> do m <- parseCommand c
                                    modify $ T.adjust ((:) m) addr
                                    return ()) (commands a)
-                   addr' <- removeDuplicates addr (opType a)
+                   addr' <- removeDuplicates addr
                    return $ addr'
 
-removeDuplicates :: (Monad m) => BS.ByteString -> BS.ByteString -> StateT Messages m BS.ByteString
-removeDuplicates addr ty = do messages <- get
-                              let nodesOfType = submap (BS.append (BS.pack "/") ty) messages
-                              let addrMsgs = T.lookup addr messages
-                              -- If messages are all the same then they're equivalent so we can combine the nodes
-                              case L.filter (\(a, ms) -> a /= addr && addrMsgs == Just ms) (T.toList nodesOfType) of
-                                ((maddr, _):_) -> do modify . T.delete $ addr
-                                                     return maddr
-                                _ -> return addr
+removeDuplicates :: (Monad m) => BS.ByteString -> StateT Messages m BS.ByteString
+removeDuplicates addr = do messages <- get
+                           let nodesOfType = submap (BS.takeWhile (/= '_') addr) messages
+                           let addrMsgs = T.lookup addr messages
+                           -- If messages are all the same then they're equivalent so we can combine the nodes
+                           case L.filter (\(a, ms) -> a /= addr && addrMsgs == Just ms) (T.toList nodesOfType) of
+                             ((maddr, _):_) -> do modify . T.delete $ addr
+                                                  return maddr
+                             _ -> return addr
 
 findEmpty :: BS.ByteString -> Messages -> BS.ByteString
 findEmpty ty ms = BS.concat ["/", ty, "_", BS.pack . findKey 0 . L.map BS.unpack . L.sort . T.keys $ submap (BS.append "/" ty) ms]
@@ -209,22 +219,20 @@ findEmpty ty ms = BS.concat ["/", ty, "_", BS.pack . findKey 0 . L.map BS.unpack
     findKey n [] = show n
     findKey n (x:xs) = if (L.tail $ L.dropWhile (/= '_') x) == show n then findKey (n + 1) xs else show n
 
-makeMessages :: Messages -> [Message]
--- makeMessages = L.sort . allMsgs . T.toList
---                where
---                  allMsgs ((addr, msgs):ms) = (addrMsgs addr msgs) ++ allMsgs ms
---                  allMsgs [] = []
---                  addrMsgs addr ((Create ty):ms) = (Message (BS.unpack addr) [string "create", ASCII_String ty]):(addrMsgs addr ms)
---                  addrMsgs addr ((Connect i caddr):ms) = (Message (BS.unpack addr) [string "connect", int32 i, ASCII_String caddr]):(addrMsgs addr ms)
---                  addrMsgs addr ((Parameter k v):ms) = (Message (BS.unpack addr) [string "parameter", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
---                  addrMsgs addr ((CustomPar k v):ms) = (Message (BS.unpack addr) [string "custompar", ASCII_String k, ASCII_String v]):(addrMsgs addr ms)
---                  addrMsgs addr ((Command c bs):ms) = (Message (BS.unpack addr) $ [string "command", ASCII_String c] ++ (ASCII_String <$> bs)):(addrMsgs addr ms)
---                  addrMsgs addr ((TextContent content):ms) = (Message (BS.unpack addr) [string "text", ASCII_String content]):(addrMsgs addr ms)
---                  addrMsgs addr ((Fixed _):ms) = addrMsgs addr ms
---                  addrMsgs _ [] = []
+applyRevPars :: Messages -> Messages
+applyRevPars ms = L.foldl (\ms (a, msgs) -> parseMessages ms a msgs) ms $ T.toList ms
+  where
+    parseMessages ms addr ((RevParameter par dest):msgs) = T.adjust ((:) (Parameter par (wrapOp addr))) dest ms
+    parseMessages ms addr ((RevConnect par dest):msgs) = T.adjust (addConnect par addr) dest ms
+    parseMessages ms addr (_:msgs) = parseMessages ms addr msgs
+    parseMessages ms addr [] = ms
+    addConnect i addr (cn@(Connect i' addr'):msgs) = (if i' >= i then Connect (i' + 1) addr' else cn):(addConnect i addr msgs)
+    addConnect i addr (msg:msgs) = msg:(addConnect i addr msgs)
+    addConnect i addr [] = [Connect i addr]
 
+makeMessages :: Messages -> [Message]
 makeMessages msgs = [Message ("/json") [ASCII_String $ BSL.toStrict . A.encode $ A.toJSON . A.object $
-                                        L.map (\(k, v) -> decodeUtf8 k A..= jsonNode v) $ T.toList msgs]]
+                                        L.map (\(k, v) -> decodeUtf8 k A..= jsonNode v) $ T.toList $ applyRevPars msgs]]
 
 jsonNode :: [Messagable] -> JSONNode
 jsonNode = L.foldl modmsg emptyJsonNode
