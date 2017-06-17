@@ -17,7 +17,7 @@ data VoteEffect = VoteEffect VoteType BS.ByteString BS.ByteString BS.ByteString 
 
 
 ain' m = math' (mathMult ?~ float m) [audioIn]
-ain = ain' 4
+ain = ain' 1
 atex = chopToT $ ain
 aspect = audioSpectrum $ audioIn
 aspecttex = chopToT $ aspect
@@ -140,6 +140,8 @@ paletterepeatT' f p r top = frag' f "color_repeat.frag" [("i_repeat", xV4 r)] [t
 paletterepeatT = paletterepeatT' id
 edgesc' f c t = compT 0 [edges' f t, levelT' (levelOpacity ?~ c) t]
 edgesc = edgesc' id
+flowermod s = frag' id "flower_mod.frag" [("uSeconds", xV4 s)] . (:[])
+hue h = hsvT' (hsvAdjHueOffset ?~ h)
 littleplanet' f = frag' f "little_planet.frag" [] . (:[])
 littleplanet = littleplanet' id
 lumidots' f = frag' f "lumidots.frag" [] . (:[])
@@ -158,6 +160,7 @@ repeatT' f r top = frag' f "repeat.frag" [("i_repeat", xV4 r)] [top]
 repeatT = repeatT' id
 rotate' f r = transformT' (transformRotate ?~ r)
 rotate = rotate' id
+sat s = hsvT' (hsvAdjSatMult ?~ s)
 scale' f s = transformT' (transformScale .~ ((!+ (float 1)) <$> fst s, (!+ (float 1)) <$> snd s))
 scale = scale' id
 scalexy' f s = scale' f (Just s, Just s)
@@ -170,6 +173,7 @@ translatex' f x = translate' f $ emptyV2 & _1 ?~ x
 translatex = translatex' id
 translatey' f y = translate' f $ emptyV2 & _2 ?~ y
 translatey = translatey' id
+val v = hsvT' (hsvAdjValMult ?~ v)
 
 -- combiners
 
@@ -188,6 +192,8 @@ triggerops f tops = switchT (chopChan0 $
 
 neon = Palette ["A9336B", "5F2F88", "CB673D", "87BB38"]
 fire = Palette ["f07f13", "800909", "f27d0c", "fdcf58"]
+buddhist = Palette ["0000FF", "FFFF00", "FF0000", "FFFFFF", "FF9800"]
+tealness = Palette ["#6cb6bd", "#71b8b9", "#7abbb3", "#81bead", "#8cc1a5"]
 
 ------------------------
 

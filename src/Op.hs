@@ -219,6 +219,11 @@ data TOP = Blur { _blurSize :: Tree Float
                      , _topIns :: [Tree TOP]
                      , _topPasses :: Maybe (Tree Int)
                      }
+           | HSVAdjust { _hsvAdjSatMult :: Maybe (Tree Float)
+                       , _hsvAdjValMult :: Maybe (Tree Float)
+                       , _hsvAdjHueOffset :: Maybe (Tree Float)
+                       , _topIns :: [Tree TOP]
+                       }
            | LevelTOP { _levelOpacity :: Maybe (Tree Float)
                       , _levelBrightness :: Maybe (Tree Float)
                       , _topIns :: [Tree TOP]
@@ -606,6 +611,10 @@ instance Op TOP where
     L.concatMap (\(i, (n, v)) -> (BS.pack $ "uniname" ++ show i, str n):vec4Map' ("value" ++ show i) v) $ L.zip [0..] _glslTUniforms
   pars t@(MovieFileIn file mode index _) = ("file", file):
     (catMaybes [("playmode" <$$> (const (int 1) <$> index)) , ("index" <$$> index)]) ++ topBasePars t
+  pars (HSVAdjust {..}) = catMaybes [ "saturationmult" <$$> _hsvAdjSatMult
+                                    , "valuemult" <$$> _hsvAdjValMult
+                                    , "hueoffset" <$$> _hsvAdjHueOffset
+                                    ]
   pars (LevelTOP {..}) = catMaybes [("opacity" <$$> _levelOpacity), "brightness1" <$$> _levelBrightness]
   pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
@@ -630,6 +639,7 @@ instance Op TOP where
   opType (Flip {}) = "flip"
   opType (GLSLTOP {}) = "glslTop"
   opType (InTOP {}) = "inTop"
+  opType (HSVAdjust {}) = "hsvAdjustTop"
   opType (LevelTOP {}) = "levelTop"
   opType (MovieFileIn {}) = "movieFileIn"
   opType (NoiseTOP _ _ _) = "noiseTop"
@@ -760,6 +770,9 @@ opsadd = mathCombChops .~ Just (int 1)
 
 opaddf :: Float -> CHOP -> CHOP
 opaddf a = mathAdd .~ Just (float a)
+
+opmultf :: Float -> CHOP -> CHOP
+opmultf a = mathMult .~ Just (float a)
 
 sopToC :: Tree SOP -> Tree CHOP
 sopToC = N <$> SOPToCHOP
@@ -901,6 +914,9 @@ glslT = glslT' id
 glslTP' :: (TOP -> TOP) -> String -> [(String, Vec4)] -> [Tree TOP] -> Tree TOP
 glslTP' f s us ts = glslT' ((glslTUniforms .~ us) . f) s ts
 glslTP = glslTP' id
+
+hsvT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
+hsvT' f = N <$> f. HSVAdjust Nothing Nothing Nothing . (:[])
 
 levelT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 levelT' f = N <$> f. LevelTOP Nothing Nothing . (:[])

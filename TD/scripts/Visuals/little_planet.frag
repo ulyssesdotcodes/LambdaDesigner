@@ -18,7 +18,5 @@ void main() {
   if (pos.x < 0 && pos.y < 0) posp.x += 6.28318;
   // if (pos.x > 0 && pos.y < 0) posp.x += 6.28318;
   posp.x /= 6.28318;
-  posp.y *= 0.7;
-  posp.y -= 0.2;
   fragColor = texture(sTD2DInputs[0], posp);
 }

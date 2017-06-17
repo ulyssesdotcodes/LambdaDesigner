@@ -20,7 +20,10 @@ def cook(scriptOp):
 
   colorCount = len(inDat.rows()) - 1
   for idx, r in enumerate(inDat.rows()):
-    cs = list(map(lambda x: x / 256, struct.unpack('BBB',bytes.fromhex(r[0].val))))
+    color = r[0].val
+    if r[0].val[0] == '#':
+      color = color[1:]
+    cs = list(map(lambda x: x / 256, struct.unpack('BBB',bytes.fromhex(color))))
     cs.insert(0, idx / colorCount)
     cs.append(1)
     scriptOp.appendRow(cs)

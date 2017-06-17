@@ -16,6 +16,7 @@ classes = {
   'nullTop' : (nullTOP, 'null', 'TOP'),
   'outTop' : (outTOP, 'out', 'TOP'),
   'render' : (renderTOP, 'render', 'TOP'),
+  'hsvAdjustTop' : (hsvadjustTOP, 'hsvadj', 'TOP'),
   'levelTop' : (levelTOP, 'level', 'TOP'),
   'transform' : (transformTOP, 'transform', 'TOP'),
   'noiseTop' : (noiseTOP, 'noise', 'TOP'),
@@ -89,6 +90,7 @@ diffs = []
 
 def apply(newState):
   global state
+  print(newState)
   # Step 1: create new nodes
   prevState = state
   state = newState
@@ -110,7 +112,6 @@ def apply(newState):
       diffip = diffi[1] if isinstance(diffi[1], str) or diffi[1] == '' else ".".join(concatname)
       item = dot_lookup(state, diffip, parent=True)
       curop = op(getName(splits[0]))
-      print(curop.name)
       for connector in curop.inputConnectors:
         connector.disconnect()
       for i, conn in enumerate(item['connections']):
@@ -122,6 +123,14 @@ def apply(newState):
           addParameter(curop, k, v)
       elif diffi[0] == 'change':
         addParameter(curop, splits[2], diffi[2][1])
+      elif diffi[0] == 'remove':
+        print(diffi)
+        print(splits)
+        for param in diffi[2]:
+          par = curop.pars(param[0])[0]
+          if par.val:
+            par.val = par.default
+
     elif splits[1] == 'text':
       op(getName(splits[0])).text = diffi[2][1]
 
@@ -157,7 +166,6 @@ def addAll(state):
       connections.extend([c, addr, i] for i,c in enumerate(value['connections']))
 
   for conn in connections:
-    print(getName(conn[0]))
     if conn[0] == '' or op(getName(conn[0])) == None:
       continue
     if conn[2] == 0:
@@ -191,7 +199,6 @@ def createOp(addr, ty):
     op(par).create(selOp, name)
     op(addr).pars(selPar)[0].val = '/project1/' + clazz[1]
   else:
-    print(addr)
     op(par).create(clazz[0], name)
 
   newOp = op(addr)
@@ -207,17 +214,15 @@ def createOp(addr, ty):
   return newOp
 
 def addParameter(newOp, name, value):
-  print(newOp.name)
   pars = newOp.pars(name)
-  if len(pars) > 0:
-    par = pars[0]
-    if isfloat(value):
-      if par.isMenu:
-        par.menuIndex = value
-      else:
-        par.val = float(value)
+  par = pars[0]
+  if isfloat(value):
+    if par.isMenu:
+      par.menuIndex = value
     else:
-      par.expr = value
+      par.val = float(value)
+  else:
+    par.expr = value
 
   # Special case loading tox as soon as we know source
   if name == "externaltox":
