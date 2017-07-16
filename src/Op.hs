@@ -953,6 +953,7 @@ switchT = switchT' id
 
 textT' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
 textT' f tx = N . f $ TextTOP tx emptyV2
+textT = textT' id
 
 transformT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 transformT' f = N <$> f . (TransformTOP emptyV2 Nothing emptyV2 Nothing Nothing) . (:[])
