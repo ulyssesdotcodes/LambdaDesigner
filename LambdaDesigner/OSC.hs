@@ -7,13 +7,13 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module OSC where
+module LambdaDesigner.OSC where
 
 import Prelude hiding (lookup)
 
 import Debug.Trace
 
-import Op
+import LambdaDesigner.Op
 
 import Control.Lens
 import Control.Lens.Cons

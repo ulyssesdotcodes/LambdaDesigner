@@ -14,10 +14,9 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  hs-source-dirs:      src
-  exposed-modules:     Lib
-                     , Op
-                     , OSC
+  exposed-modules:     LambdaDesigner.Lib
+                     , LambdaDesigner.Op
+                     , LambdaDesigner.OSC
   build-depends:       base >= 4.7 && < 5
                      , aeson
                      , bytestring

@@ -1,13 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Lib
+module LambdaDesigner.Lib
     ( topRunner
     , run
     , run2
     ) where
 
-import Op
-import OSC
+import LambdaDesigner.Op
+import LambdaDesigner.OSC
 
 import Control.Monad.Trans.State
 import Data.IORef

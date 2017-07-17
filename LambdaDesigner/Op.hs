@@ -7,7 +7,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Op where
+module LambdaDesigner.Op where
 
 import Prelude hiding (sin)
 
@@ -503,13 +503,13 @@ instance Baseable CHOP where
   outOp o = N $ OutCHOP [o]
 
 instance Op DAT where
-  pars (ChopExec chop offon won onoff woff vc ) = ("chop", ResolveP chop):(catMaybes [ ("offtoon",) . Resolve . Op.bool . const True <$> offon
-                                                                                    , ("whileon",) . Resolve . Op.bool . const True <$> won
-                                                                                    , ("ontooff",) . Resolve . Op.bool . const True <$> onoff
-                                                                                    , ("whileoff",) . Resolve . Op.bool . const True <$> woff
-                                                                                    , ("valuechange",) . Resolve . Op.bool . const True <$> vc
+  pars (ChopExec chop offon won onoff woff vc ) = ("chop", ResolveP chop):(catMaybes [ ("offtoon",) . Resolve . LambdaDesigner.Op.bool . const True <$> offon
+                                                                                    , ("whileon",) . Resolve . LambdaDesigner.Op.bool . const True <$> won
+                                                                                    , ("ontooff",) . Resolve . LambdaDesigner.Op.bool . const True <$> onoff
+                                                                                    , ("whileoff",) . Resolve . LambdaDesigner.Op.bool . const True <$> woff
+                                                                                    , ("valuechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> vc
                                                                                     ])
-  pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . Op.bool . const True <$> _deTableChange])
+  pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> _deTableChange])
   pars (ScriptDAT {..}) = [("callbacks", ResolveP _scriptDatDat)]
   pars (SelectDAT {..}) = maybe altChoice (\row -> [("rowindexstart", Resolve row), ("rowindexend", Resolve row), ("extractrows", Resolve $ int 2)]) _selectDRI ++ [("dat", ResolveP _selectDat)]
                           where
