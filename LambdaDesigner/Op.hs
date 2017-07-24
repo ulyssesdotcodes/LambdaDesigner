@@ -320,6 +320,9 @@ bool = PyExpr . Data.Bool.bool "0" "1"
 str :: String -> Tree ByteString
 str = PyExpr . pack . show
 
+bstr :: String -> Tree ByteString
+bstr = PyExpr . pack
+
 (!+) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
 (!+) = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
 
