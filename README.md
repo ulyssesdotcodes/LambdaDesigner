@@ -11,4 +11,4 @@ A type-safe EDSL for TouchDesigner written in Haskell. Instead of connecting nod
 
 ### Installing
 
-Clone or download [LambdaDesigner-sample](https://github.com/ulyssesp/lambdadesigner-td).
+Clone or download [LambdaDesigner-sample](https://github.com/ulyssesp/lambdadesigner-sample).
