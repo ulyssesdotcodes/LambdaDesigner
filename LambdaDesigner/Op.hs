@@ -467,7 +467,8 @@ instance Op CHOP where
                                   , ("length" <$$> _timerLength)
                                   , ("lengthunits",) . Resolve . const (int 1) <$> _timerLength
                                   , ("outseg" <$$> _timerShowSeg)
-                                  , ("outrunning" <$$> _timerShowSeg)
+                                  , ("outsegpulse" <$$> _timerShowSeg)
+                                  , ("outrunning" <$$> _timerShowRunning)
                                   , ("outtimercount" <$$> _timerCount)
                                   ] ++ chopBasePars n
   pars _ = []
