@@ -433,7 +433,7 @@ instance Op CHOP where
   pars n@(Analyze {..}) = [("function", Resolve _analyzeFunc)]
   pars n@(AudioFilter {..}) = [("filter", Resolve _audioFilterPass)] ++
     catMaybes ["cutofflog" <$$> _audioFilterCutoff]
-  pars n@(ConstantCHOP v) = L.zipWith (\i v' -> (BS.pack $ "value" ++ show i, Resolve v')) [0..] v ++ chopBasePars n
+  pars n@(ConstantCHOP v) = L.concat (L.zipWith (\i v' -> [(BS.pack $ "value" ++ show i, Resolve v'), (BS.pack $ "name" ++ show i, str $ "chan" ++ show i)]) [0..] v) ++ chopBasePars n
   pars n@(Count {..}) = catMaybes [ "threshup" <$$> _countThresh
                                   , "output" <$$> _countLimType
                                   , "limitmin" <$$> _countLimMin
