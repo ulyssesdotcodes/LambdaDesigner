@@ -144,7 +144,8 @@ parseTree (Fix name op) = do messages <- get
                              let name' = BS.append "/" name
                              case T.member name' messages of
                                True -> return name'
-                               False -> do addr <- parseTree op
+                               False -> do modify $ T.insert name' [(Fixed name)]
+                                           addr <- parseTree op
                                            messages' <- get
                                            modify $ T.insert name' . ((:) (Fixed name)) . fromJust $ T.lookup addr messages'
                                            modify $ T.delete addr
