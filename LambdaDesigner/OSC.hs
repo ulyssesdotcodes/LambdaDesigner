@@ -165,6 +165,10 @@ parseTree (Mod f ta) = do aaddr <- parseParam ta
 parseTree (Mod2 f ta tb) = do aaddr <- parseParam ta
                               baddr <- parseParam tb
                               return $ f aaddr baddr
+parseTree (Mod3 f ta tb tc) = do aaddr <- parseParam ta
+                                 baddr <- parseParam tb
+                                 caddr <- parseParam tc
+                                 return $ f aaddr baddr caddr
 parseTree (Cast f a) = do aaddr <- parseParam a
                           return $ f aaddr
 parseTree (Resolve r) = parseTree r

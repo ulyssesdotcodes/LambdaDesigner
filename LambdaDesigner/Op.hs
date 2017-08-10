@@ -302,8 +302,10 @@ data Tree a where
   ChopChan :: ByteString -> Tree CHOP -> Tree Float
   Cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree ByteString
   NumRows :: Tree DAT -> Tree Int
-  Mod :: (Num n) => (ByteString -> ByteString) -> Tree n -> Tree n
-  Mod2 :: (Num n) => (ByteString -> ByteString -> ByteString) -> Tree n -> Tree n -> Tree n
+  Mod :: (ByteString -> ByteString) -> Tree n -> Tree n
+  Mod2 :: (ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c
+  Mod3 :: (ByteString -> ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c -> Tree d
+  Ternary :: Tree Bool -> Tree a -> Tree a -> Tree a
   Cast :: (Num b) => (ByteString -> ByteString) -> Tree a -> Tree b
   Resolve :: Tree a -> Tree ByteString
   ResolveP :: Tree a -> Tree ByteString
@@ -331,6 +333,12 @@ bstr = PyExpr . pack
 
 (!%) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
 (!%) = Mod2 (\a b -> BS.concat ["(", a, "%", b, ")"])
+
+(!==) :: Tree a -> Tree a -> Tree Bool
+(!==) = Mod2 (\a b -> BS.concat ["(", a, "==", b, ")"])
+
+ternary :: Tree Bool -> Tree a -> Tree a -> Tree a
+ternary = Mod3 (\a b c -> BS.concat [b, " if ", a, " else ", c])
 
 seconds :: Tree Float
 seconds = PyExpr "absTime.seconds"
