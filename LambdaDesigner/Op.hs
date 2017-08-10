@@ -98,6 +98,9 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                       , _noiseCPeriod :: Maybe (Tree Float)
                       , _noiseCChannels :: Maybe (Tree ByteString)
                       }
+          | NullCHOP { _nullCCookType :: Maybe (Tree Int)
+                     , _chopIns :: [Tree CHOP]
+                     }
           | OscInCHOP { _oscInCPort :: Tree ByteString
                       }
           | OutCHOP { _chopIns :: [Tree CHOP]
@@ -238,7 +241,7 @@ data TOP = Blur { _blurSize :: Tree Float
                       , _noiseTResolution :: IVec2
                       , _noiseTTranslate :: Vec3
                       }
-           | NullTOP { _topIns :: [Tree TOP]}
+           | NullTOP { _topIns :: [Tree TOP] }
            | OutTOP { _topIns :: [Tree TOP] }
            | Ramp { _rampType :: Maybe (Tree Int)
                   , _rampPhase :: Maybe (Tree Float)
@@ -467,6 +470,7 @@ instance Op CHOP where
                                       , "amp" <$$> _noiseCAmplitude
                                       , ("channelname",) <$> _noiseCChannels
                                       ] ++ chopBasePars n ++ vec3Map' "t" _noiseCTranslate
+  pars n@(NullCHOP {..}) = catMaybes [("cooktype" <$$> _nullCCookType)] ++ chopBasePars n
   pars n@(SelectCHOP c) = catMaybes [(("chop",) . ResolveP <$> c)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
@@ -497,6 +501,7 @@ instance Op CHOP where
   opType (MergeCHOP {}) = "mergeChop"
   opType (MidiIn {}) = "midiIn"
   opType (NoiseCHOP {}) = "noiseChop"
+  opType (NullCHOP {}) = "nullChop"
   opType (OscInCHOP {}) = "oscInChop"
   opType (OutCHOP {}) = "outChop"
   opType (SwitchCHOP {}) = "switchChop"
@@ -770,12 +775,17 @@ mergeC = mergeC' id
 mchan :: String -> Tree Float
 mchan s = chopChanName s $ N MidiIn
 
-oscin :: Int -> Tree CHOP
-oscin p = N $ OscInCHOP (Resolve $ int p)
-
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
 noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing)
 noiseC = noiseC' id
+
+nullC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
+nullC' f = N <$> f . NullCHOP Nothing . (:[])
+nullC = nullC' id
+cookC = nullC' (nullCCookType ?~ int 1)
+
+oscin :: Int -> Tree CHOP
+oscin p = N $ OscInCHOP (Resolve $ int p)
 
 opsadd :: CHOP -> CHOP
 opsadd = mathCombChops .~ Just (int 1)
