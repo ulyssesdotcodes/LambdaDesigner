@@ -12,4 +12,4 @@ import Data.Matrix
 import qualified Data.ByteString.Char8 as BS
 
 go = do r <- newIORef mempty
-        run r [constC [float 0] & cookC]
+        run r [textT $ str "one " !+ str "two"]

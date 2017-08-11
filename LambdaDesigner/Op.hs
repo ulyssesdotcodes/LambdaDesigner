@@ -328,13 +328,13 @@ str = PyExpr . pack . show
 bstr :: String -> Tree ByteString
 bstr = PyExpr . pack
 
-(!+) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
+(!+) :: (Show a) => Tree a -> Tree a -> Tree a
 (!+) = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
 
-(!*) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
+(!*) :: (Show a) => Tree a -> Tree a -> Tree a
 (!*) = Mod2 (\a b -> BS.concat ["(", a, "*", b, ")"])
 
-(!%) :: (Num a, Show a) => Tree a -> Tree a -> Tree a
+(!%) :: (Show a) => Tree a -> Tree a -> Tree a
 (!%) = Mod2 (\a b -> BS.concat ["(", a, "%", b, ")"])
 
 (!==) :: Tree a -> Tree a -> Tree Bool
