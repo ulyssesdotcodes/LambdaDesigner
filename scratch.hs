@@ -12,4 +12,4 @@ import Data.Matrix
 import qualified Data.ByteString.Char8 as BS
 
 go = do r <- newIORef mempty
-        run r [textT $ str "one " !+ str "two"]
+        run r [outT $ textT $ caststr $ chopChanName "timer_fraction" $ timer' ((timerStart .~ True)) (int 500)]

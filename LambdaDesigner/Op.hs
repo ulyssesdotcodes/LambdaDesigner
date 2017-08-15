@@ -117,6 +117,8 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerCount :: Maybe (Tree Int)
                   , _timerLength :: Maybe (Tree Int)
                   , _timerCallbacks :: Maybe (Tree DAT)
+                  , _timerStart :: Bool
+                  , _timerInit :: Bool
                   }
 
 data DAT = ChopExec { _chopExecChop :: Tree CHOP
@@ -195,6 +197,7 @@ data TOP = Blur { _blurSize :: Tree Float
            | CompositeTOP { _compTOperand :: Tree Int
                           , _topIns :: [Tree TOP]
                           , _topPasses :: Maybe (Tree Int)
+                          , _topResolution :: IVec2
                           }
            | Crop { _cropLeft :: Maybe (Tree Float)
                   , _cropRight :: Maybe (Tree Float)
@@ -309,7 +312,7 @@ data Tree a where
   Mod2 :: (ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c
   Mod3 :: (ByteString -> ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c -> Tree d
   Ternary :: Tree Bool -> Tree a -> Tree a -> Tree a
-  Cast :: (Num b) => (ByteString -> ByteString) -> Tree a -> Tree b
+  Cast :: (ByteString -> ByteString) -> Tree a -> Tree b
   Resolve :: Tree a -> Tree ByteString
   ResolveP :: Tree a -> Tree ByteString
 
@@ -509,6 +512,7 @@ instance Op CHOP where
   opType (SOPToCHOP _) = "sopToChop"
   opType (Timer {}) = "timer"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
+  commands (Timer {..}) = L.map fst . L.filter snd $ L.zip [Pulse "start" "1" 1, Pulse "initialize" "1" 1] [_timerStart, _timerInit]
   commands _ = []
   connections (maybeToList . flip (^?) chopIns -> cs) = mconcat cs
 
@@ -712,6 +716,9 @@ casti = Cast (\fl -> BS.concat ["int(", fl, ")"])
 castf :: (Floating f) => Tree i -> Tree f
 castf = Cast (\fl -> BS.concat ["float(", fl, ")"])
 
+caststr :: (Show a) => Tree a -> Tree ByteString
+caststr = Cast (\s -> BS.concat ["str(", s, ")"])
+
 -- CHOPs
 
 analyze :: Tree Int -> Tree CHOP -> Tree CHOP
@@ -813,11 +820,11 @@ timerBS :: TimerSegment -> [ByteString]
 timerBS (TimerSegment {..}) = [pack $ show segDelay, pack $ show segLength]
 
 timerSeg' :: (CHOP -> CHOP) -> [TimerSegment] -> Tree CHOP
-timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing
+timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing False False
 timerSeg = timerSeg' id
 
 timer' :: (CHOP -> CHOP) -> Tree Int -> Tree CHOP
-timer' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) (Just l) Nothing
+timer' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) (Just l) Nothing False False
 
 -- DATs
 
@@ -909,7 +916,7 @@ circleT' :: (TOP -> TOP) -> Tree TOP
 circleT' f = N . f $ CircleTOP
 
 compT' :: (TOP -> TOP) -> Int -> [Tree TOP] -> Tree TOP
-compT' f op ts = N . f $ CompositeTOP (int op) ts Nothing
+compT' f op ts = N . f $ CompositeTOP (int op) ts Nothing emptyV2
 compT = compT' id
 
 crop' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
