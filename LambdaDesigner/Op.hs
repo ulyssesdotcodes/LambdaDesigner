@@ -115,7 +115,8 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerShowSeg :: Maybe (Tree Bool)
                   , _timerShowRunning :: Maybe (Tree Bool)
                   , _timerCount :: Maybe (Tree Int)
-                  , _timerLength :: Maybe (Tree Int)
+                  , _timerLengthFrames :: Maybe (Tree Int)
+                  , _timerLengthSeconds :: Maybe (Tree Float)
                   , _timerCallbacks :: Maybe (Tree DAT)
                   , _timerStart :: Bool
                   , _timerInit :: Bool
@@ -479,8 +480,10 @@ instance Op CHOP where
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
   pars n@(Timer {..}) = catMaybes [ ("segdat",) . ResolveP <$> _timerSegments
                                   , ("callbacks",) . ResolveP <$> _timerCallbacks
-                                  , ("length" <$$> _timerLength)
-                                  , ("lengthunits",) . Resolve . const (int 1) <$> _timerLength
+                                  , ("length" <$$> _timerLengthSeconds)
+                                  , ("length" <$$> _timerLengthFrames)
+                                  , ("lengthunits",) . Resolve . const (int 2) <$> _timerLengthSeconds
+                                  , ("lengthunits",) . Resolve . const (int 1) <$> _timerLengthFrames
                                   , ("outseg" <$$> _timerShowSeg)
                                   , ("outsegpulse" <$$> _timerShowSeg)
                                   , ("outrunning" <$$> _timerShowRunning)
@@ -820,11 +823,14 @@ timerBS :: TimerSegment -> [ByteString]
 timerBS (TimerSegment {..}) = [pack $ show segDelay, pack $ show segLength]
 
 timerSeg' :: (CHOP -> CHOP) -> [TimerSegment] -> Tree CHOP
-timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing False False
+timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing Nothing False False
 timerSeg = timerSeg' id
 
-timer' :: (CHOP -> CHOP) -> Tree Int -> Tree CHOP
-timer' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) (Just l) Nothing False False
+timerF' :: (CHOP -> CHOP) -> Tree Int -> Tree CHOP
+timerF' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) (Just l) Nothing Nothing False False
+
+timerS' :: (CHOP -> CHOP) -> Tree Float -> Tree CHOP
+timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just l) Nothing False False
 
 -- DATs
 
