@@ -15,6 +15,7 @@ import Control.Lens
 import Data.Bool
 import Data.Matrix
 import Data.Maybe
+import Data.Monoid
 
 import Data.ByteString.Char8 as BS
 import Data.List as L
@@ -634,7 +635,7 @@ instance Op TOP where
   pars t@(GLSLTOP {..}) = (++) (("pixeldat", ResolveP _glslTDat):(topBasePars t)) $
     L.concatMap (\(i, (n, v)) -> (BS.pack $ "uniname" ++ show i, str n):vec4Map' ("value" ++ show i) v) $ L.zip [0..] _glslTUniforms
   pars t@(MovieFileIn file mode index _) = ("file", file):
-    (catMaybes [("playmode" <$$> (const (int 1) <$> index)) , ("index" <$$> index)]) ++ topBasePars t
+    (catMaybes ["playmode" <$$> getFirst (First ( const (int 1) <$> index) <> First mode), ("index" <$$> index)]) ++ topBasePars t
   pars (HSVAdjust {..}) = catMaybes [ "saturationmult" <$$> _hsvAdjSatMult
                                     , "valuemult" <$$> _hsvAdjValMult
                                     , "hueoffset" <$$> _hsvAdjHueOffset
