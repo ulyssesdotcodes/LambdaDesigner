@@ -30,6 +30,7 @@ library
                      , transformers >= 0.5
                      , vector >= 0.11
   default-language:    Haskell2010
+  ghc-options:  -fwarn-incomplete-patterns
 
 source-repository head
   type:     git

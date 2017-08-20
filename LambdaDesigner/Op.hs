@@ -45,11 +45,21 @@ class Op a where
 data CHOP = Analyze { _analyzeFunc :: Tree Int
                     , _chopIns :: [Tree CHOP]
                     }
-          | AudioIn
+          | AudioDeviceOut { _audioDevOutVolume :: Maybe (Tree Float)
+                           , _chopIns :: [ Tree CHOP ]
+                           }
+          | AudioFileIn { _audioFileInFile :: Tree ByteString
+                        , _audioFileInVolume :: Maybe (Tree Float)
+                        , _audioFileInPlayMode :: Maybe (Tree Int)
+                        , _audioFileInIndex :: Maybe (Tree Int)
+                        }
           | AudioFilter { _audioFilterPass :: Tree Int
                         , _audioFilterCutoff :: Maybe (Tree Float)
                         , _chopIns :: [Tree CHOP]
                         }
+          | AudioIn
+          | AudioMovie { _audioMovieFileInTOP :: Tree TOP
+                       }
           | AudioSpectrum { _chopIns :: [Tree CHOP] }
           | ConstantCHOP { _values :: [Tree Float] }
           | Count { _chopIns :: [Tree CHOP]
@@ -313,7 +323,6 @@ data Tree a where
   Mod :: (ByteString -> ByteString) -> Tree n -> Tree n
   Mod2 :: (ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c
   Mod3 :: (ByteString -> ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c -> Tree d
-  Ternary :: Tree Bool -> Tree a -> Tree a -> Tree a
   Cast :: (ByteString -> ByteString) -> Tree a -> Tree b
   Resolve :: Tree a -> Tree ByteString
   ResolveP :: Tree a -> Tree ByteString
@@ -449,6 +458,16 @@ instance Op CHOP where
   pars n@(Analyze {..}) = [("function", Resolve _analyzeFunc)]
   pars n@(AudioFilter {..}) = [("filter", Resolve _audioFilterPass)] ++
     catMaybes ["cutofflog" <$$> _audioFilterCutoff]
+  pars n@(AudioDeviceOut {..}) = catMaybes ["volume" <$$> _audioDevOutVolume] ++ chopBasePars n
+  pars n@(AudioFileIn {..}) = [("file", Resolve _audioFileInFile)] ++
+                              catMaybes [ "volume" <$$> _audioFileInVolume
+                                        , "index" <$$> _audioFileInIndex
+                                        , "playmode" <$$> getFirst (First ( const (int 1) <$> _audioFileInIndex) <> First _audioFileInPlayMode)
+                                        ]
+  pars (AudioIn) = []
+  pars (AudioMovie {..}) = [ ("moviefileintop", ResolveP _audioMovieFileInTOP)
+                           ]
+  pars (AudioSpectrum _) = []
   pars n@(ConstantCHOP v) = L.concat (L.zipWith (\i v' -> [(BS.pack $ "value" ++ show i, Resolve v'), (BS.pack $ "name" ++ show i, str $ "chan" ++ show i)]) [0..] v) ++ chopBasePars n
   pars n@(Count {..}) = catMaybes [ "threshup" <$$> _countThresh
                                   , "output" <$$> _countLimType
@@ -458,6 +477,9 @@ instance Op CHOP where
                                   ] ++ chopBasePars n
   pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames)]
   pars n@(Fan o off _) = catMaybes ["fanop" <$$> o, "alloff" <$$> off] ++ chopBasePars n
+  pars (FeedbackCHOP _) = []
+  pars (Hold _) = []
+  pars InCHOP = []
   pars n@(Lag {..}) = vec2Map ("1", "2") "lag" _lagLag ++ chopBasePars n
   pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
   pars n@(Math {..}) = catMaybes [ "preoff" <$$> _mathAdd
@@ -468,7 +490,7 @@ instance Op CHOP where
                                  , "gain" <$$> _mathMult
                                  ] ++ chopBasePars n
   pars n@(MergeCHOP {..}) = catMaybes [("duplicate" <$$> _mergeCDupes)] ++ chopBasePars n
-  pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
+  pars MidiIn = []
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
                                       , "type" <$$> _noiseCType
                                       , "period" <$$> _noiseCPeriod
@@ -476,6 +498,8 @@ instance Op CHOP where
                                       , ("channelname",) <$> _noiseCChannels
                                       ] ++ chopBasePars n ++ vec3Map' "t" _noiseCTranslate
   pars n@(NullCHOP {..}) = catMaybes [("cooktype" <$$> _nullCCookType)] ++ chopBasePars n
+  pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
+  pars (OutCHOP _) = []
   pars n@(SelectCHOP c) = catMaybes [(("chop",) . ResolveP <$> c)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
@@ -490,10 +514,12 @@ instance Op CHOP where
                                   , ("outrunning" <$$> _timerShowRunning)
                                   , ("outtimercount" <$$> _timerCount)
                                   ] ++ chopBasePars n
-  pars _ = []
   opType (Analyze {}) = "analyze"
-  opType (AudioIn {}) = "audioIn"
+  opType (AudioDeviceOut {}) = "audioDevOut"
+  opType (AudioFileIn {}) = "audioFileIn"
+  opType (AudioMovie {}) = "audioMovie"
   opType (AudioFilter {}) = "audioFilter"
+  opType (AudioIn {}) = "audioIn"
   opType (AudioSpectrum {}) = "audioSpectrum"
   opType (ConstantCHOP {}) = "constantChop"
   opType (Count {}) = "count"
@@ -589,7 +615,11 @@ instance Baseable DAT where
 instance Op MAT where
   pars (ConstantMAT rgb alpha cmap) = catMaybes [("alpha" <$$> alpha), ("colormap",) . ResolveP <$> cmap]
     ++ rgbMap "color" rgb
+  pars InMAT = []
+  pars (OutMAT _) = []
   opType (ConstantMAT {}) = "constMat"
+  opType InMAT = "inMat"
+  opType (OutMAT _) = "outMat"
   connections (maybeToList . flip (^?) matIns -> cs) = mconcat cs
 
 instance Baseable MAT where
@@ -727,6 +757,17 @@ caststr = Cast (\s -> BS.concat ["str(", s, ")"])
 
 analyze :: Tree Int -> Tree CHOP -> Tree CHOP
 analyze f c = N $ Analyze f [c]
+
+audioDevOut' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
+audioDevOut' f = N <$> f . AudioDeviceOut Nothing . (:[])
+audioDevOut = audioDevOut' id
+
+audioFileIn' :: (CHOP -> CHOP) -> Tree ByteString -> Tree CHOP
+audioFileIn' f file = N . f $ (AudioFileIn file Nothing Nothing Nothing)
+audioFileIn = audioFileIn' id
+
+audioMovie :: Tree TOP -> Tree CHOP
+audioMovie movieTop = N $ AudioMovie movieTop
 
 audioIn :: Tree CHOP
 audioIn = N $ AudioIn
