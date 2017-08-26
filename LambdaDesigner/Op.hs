@@ -421,6 +421,9 @@ rgbMap = vec3Map ("r", "g", "b")
 xV4 :: Tree Float -> Vec4
 xV4 x = emptyV4 & _1 ?~ x
 
+xV3 :: Tree Float -> Vec3
+xV3 x = emptyV3 & _1 ?~ x
+
 iv2 :: (Int, Int) -> IVec2
 iv2 (x, y) = (Just $ int x, Just $ int y)
 
@@ -909,6 +912,9 @@ textD = textD' id
 
 constM' :: (MAT -> MAT) -> Tree MAT
 constM' f = N . f $ ConstantMAT emptyV3 Nothing Nothing
+
+topM :: Tree TOP -> Tree MAT
+topM t = constM' (constMatMap ?~ t)
 
 -- SOPs
 
