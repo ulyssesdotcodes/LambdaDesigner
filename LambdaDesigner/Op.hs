@@ -131,6 +131,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerCallbacks :: Maybe (Tree DAT)
                   , _timerStart :: Bool
                   , _timerInit :: Bool
+                  , _timerOnDone :: Maybe (Tree Int)
+                  , _timerShowFraction :: Maybe (Tree Bool)
+                  , _timerCycle :: Maybe (Tree Bool)
+                  , _timerCycleLimit :: Maybe (Tree Bool)
                   }
 
 data DAT = ChopExec { _chopExecChop :: Tree CHOP
@@ -516,6 +520,10 @@ instance Op CHOP where
                                   , ("outsegpulse" <$$> _timerShowSeg)
                                   , ("outrunning" <$$> _timerShowRunning)
                                   , ("outtimercount" <$$> _timerCount)
+                                  , ("ondone" <$$> _timerOnDone)
+                                  , ("outfraction" <$$> _timerShowFraction)
+                                  , ("cycle" <$$> _timerCycle)
+                                  , ("cyclelimit" <$$> _timerCycleLimit)
                                   ] ++ chopBasePars n
   opType (Analyze {}) = "analyze"
   opType (AudioDeviceOut {}) = "audioDevOut"
@@ -868,14 +876,14 @@ timerBS :: TimerSegment -> [ByteString]
 timerBS (TimerSegment {..}) = [pack $ show segDelay, pack $ show segLength]
 
 timerSeg' :: (CHOP -> CHOP) -> [TimerSegment] -> Tree CHOP
-timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing Nothing False False
+timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing Nothing False False Nothing Nothing Nothing Nothing
 timerSeg = timerSeg' id
 
 timerF' :: (CHOP -> CHOP) -> Tree Int -> Tree CHOP
-timerF' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) (Just l) Nothing Nothing False False
+timerF' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 1) (Just l) Nothing Nothing False False Nothing Nothing Nothing Nothing
 
 timerS' :: (CHOP -> CHOP) -> Tree Float -> Tree CHOP
-timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just l) Nothing False False
+timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just l) Nothing False False  Nothing Nothing Nothing Nothing
 
 -- DATs
 
