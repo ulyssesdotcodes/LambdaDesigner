@@ -131,6 +131,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerCallbacks :: Maybe (Tree DAT)
                   , _timerStart :: Bool
                   , _timerInit :: Bool
+                  , _timerCue :: Bool
                   , _timerOnDone :: Maybe (Tree Int)
                   , _timerShowFraction :: Maybe (Tree Bool)
                   , _timerCycle :: Maybe (Tree Bool)
@@ -553,7 +554,7 @@ instance Op CHOP where
   opType (SOPToCHOP _) = "sopToChop"
   opType (Timer {}) = "timer"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
-  commands (Timer {..}) = L.map fst . L.filter snd $ L.zip [Pulse "start" "1" 1, Pulse "initialize" "1" 1] [_timerStart, _timerInit]
+  commands (Timer {..}) = L.map fst . L.filter snd $ L.zip [Pulse "start" "1" 2, Pulse "cuepulse" "1" 1, Pulse "initialize" "1" 1] [_timerStart, _timerCue, _timerInit]
   commands _ = []
   connections (maybeToList . flip (^?) chopIns -> cs) = mconcat cs
 
@@ -876,14 +877,14 @@ timerBS :: TimerSegment -> [ByteString]
 timerBS (TimerSegment {..}) = [pack $ show segDelay, pack $ show segLength]
 
 timerSeg' :: (CHOP -> CHOP) -> [TimerSegment] -> Tree CHOP
-timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing Nothing False False Nothing Nothing Nothing Nothing
+timerSeg' f ts = N . f $ Timer (Just $ table . fromLists $ ["delay", "length"]:(timerBS <$> ts)) Nothing Nothing Nothing Nothing Nothing Nothing False False False Nothing Nothing Nothing Nothing
 timerSeg = timerSeg' id
 
 timerF' :: (CHOP -> CHOP) -> Tree Int -> Tree CHOP
-timerF' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 1) (Just l) Nothing Nothing False False Nothing Nothing Nothing Nothing
+timerF' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 1) (Just l) Nothing Nothing False False False Nothing Nothing Nothing Nothing
 
 timerS' :: (CHOP -> CHOP) -> Tree Float -> Tree CHOP
-timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just l) Nothing False False  Nothing Nothing Nothing Nothing
+timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just l) Nothing False False False Nothing Nothing Nothing Nothing
 
 -- DATs
 
