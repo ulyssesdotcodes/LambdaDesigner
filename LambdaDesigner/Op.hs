@@ -52,6 +52,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                         , _audioFileInVolume :: Maybe (Tree Float)
                         , _audioFileInPlayMode :: Maybe (Tree Int)
                         , _audioFileInIndex :: Maybe (Tree Int)
+                        , _audioFileRepeat :: Maybe (Tree Int)
                         }
           | AudioFilter { _audioFilterPass :: Tree Int
                         , _audioFilterCutoff :: Maybe (Tree Float)
@@ -470,6 +471,7 @@ instance Op CHOP where
   pars n@(AudioFileIn {..}) = [("file", Resolve _audioFileInFile)] ++
                               catMaybes [ "volume" <$$> _audioFileInVolume
                                         , "index" <$$> _audioFileInIndex
+                                        , "repeat" <$$> _audioFileRepeat
                                         , "playmode" <$$> getFirst (First ( const (int 1) <$> _audioFileInIndex) <> First _audioFileInPlayMode)
                                         ]
   pars (AudioIn) = []
