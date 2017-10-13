@@ -777,7 +777,7 @@ audioDevOut' f = N <$> f . AudioDeviceOut Nothing . (:[])
 audioDevOut = audioDevOut' id
 
 audioFileIn' :: (CHOP -> CHOP) -> Tree ByteString -> Tree CHOP
-audioFileIn' f file = N . f $ (AudioFileIn file Nothing Nothing Nothing)
+audioFileIn' f file = N . f $ (AudioFileIn file Nothing Nothing Nothing Nothing)
 audioFileIn = audioFileIn' id
 
 audioMovie :: Tree TOP -> Tree CHOP
