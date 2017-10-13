@@ -269,6 +269,13 @@ data TOP = Blur { _blurSize :: Tree Float
                   , _topResolution :: IVec2
                   , _rampValues :: Tree DAT
                   }
+           | RectangleTOP { _rectangleSize :: Vec2
+                       , _rectangleCenter :: Vec2
+                       , _rectangleColor :: Vec3
+                       , _rectangleBorderColor :: Vec3
+                       , _rectangleBorderWidth :: Maybe (Tree Float)
+                       , _topResolution :: IVec2
+                       }
            | Render { _renderGeo :: Tree Geo
                    , _renderCamera :: Tree Camera
                    , _renderLight :: Maybe (Tree Light)
@@ -688,6 +695,11 @@ instance Op TOP where
   pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
   pars (Ramp t p r dat) = ("dat", ResolveP dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
+  pars t@(RectangleTOP {..}) =  vec2Map' "size" _rectangleSize ++
+                                vec2Map' "center" _rectangleCenter ++
+                                rgbMap "fillcolor" _rectangleColor ++
+                                rgbMap "border" _rectangleBorderColor ++
+                                catMaybes [ "borderwidth" <$$> _rectangleBorderWidth ] ++ topBasePars t
   pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("light",) . ResolveP <$> _renderLight)
   pars (SelectTOP c) = catMaybes [("top",) . ResolveP <$> c]
   pars t@(TextTOP {..}) = [("text", _textText)] ++ topBasePars t
@@ -716,6 +728,7 @@ instance Op TOP where
   opType (OutTOP {})= "outTop"
   opType (Ramp _ _ _ _) = "ramp"
   opType (Render {}) = "render"
+  opType (RectangleTOP {}) = "rectangleTop"
   opType (SelectTOP _) = "selectTop"
   opType (SwitchTOP {}) = "switchTop"
   opType (TextTOP {}) = "textTop"
@@ -1033,6 +1046,10 @@ ramp' f = N . f <$> (Ramp Nothing Nothing emptyV2)
 
 rampC' :: (TOP -> TOP) -> [(Float, Float, Float, Float, Float)] -> Tree TOP
 rampC' f = ramp' f . table . fromLists . fmap (^..each) . ((:) ("pos", "r", "g", "b", "a")) . fmap ((over each) (BS.pack . show))
+
+rectangle' :: (TOP -> TOP) -> Vec2 -> Tree TOP
+rectangle' f size = N . f $ RectangleTOP size emptyV2 emptyV3 emptyV3 Nothing emptyV2
+rectangle = rectangle' id
 
 render = render' id
 render' :: (TOP -> TOP) -> Tree Geo -> Tree Camera -> Tree TOP
