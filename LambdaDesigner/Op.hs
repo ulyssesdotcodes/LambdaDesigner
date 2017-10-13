@@ -287,6 +287,7 @@ data TOP = Blur { _blurSize :: Tree Float
                        , _topIns :: [Tree TOP]
                        }
            | TextTOP { _textText :: Tree ByteString
+                     , _textColor :: Vec3
                      , _topResolution :: IVec2
                      }
            | TransformTOP { _transformTranslate :: Vec2
@@ -702,7 +703,7 @@ instance Op TOP where
                                 catMaybes [ "borderwidth" <$$> _rectangleBorderWidth ] ++ topBasePars t
   pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("light",) . ResolveP <$> _renderLight)
   pars (SelectTOP c) = catMaybes [("top",) . ResolveP <$> c]
-  pars t@(TextTOP {..}) = [("text", _textText)] ++ topBasePars t
+  pars t@(TextTOP {..}) = [("text", _textText)] ++ rgbMap "fontcolor" _textColor ++ topBasePars t
   pars t@(TransformTOP {..}) = vec2Map' "t" _transformTranslate ++ vec2Map' "s" _transformScale ++
     catMaybes [ "rotate" <$$> _transformRotate
               , "extend" <$$> _transformExtend
@@ -1063,7 +1064,7 @@ switchT' f i = N . f <$> SwitchTOP i Nothing
 switchT = switchT' id
 
 textT' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
-textT' f tx = N . f $ TextTOP tx emptyV2
+textT' f tx = N . f $ TextTOP tx emptyV3 emptyV2
 textT = textT' id
 
 transformT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
