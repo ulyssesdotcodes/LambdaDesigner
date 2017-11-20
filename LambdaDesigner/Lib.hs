@@ -23,8 +23,8 @@ run state tree = run2 state tree ([] :: [Tree TOP])
 run2 :: (Op a, Op b) => IORef Messages -> [Tree a] -> [Tree b] -> IO ()
 run2 state tas tbs = do
   state' <- readIORef state
-  ms <- execStateT (mapM_ (\t -> do parseTree t) tas) mempty
-  ms' <- execStateT (mapM_ (\t -> do parseTree t) tbs) ms
+  ms <- execStateT (mapM_ (\t -> do parseTree "" t) tas) mempty
+  ms' <- execStateT (mapM_ (\t -> do parseTree "" t) tbs) ms
   let state'' = unionR state' ms'
       msgs = makeMessages state'
       msgs' = makeMessages ms'

@@ -258,6 +258,8 @@ data TOP = Blur { _blurSize :: Tree Float
                          , _movieIndex :: Maybe (Tree Int)
                          , _topResolution :: IVec2
                          }
+           | NdiInTOP { _ndiinName :: Tree BS.ByteString
+                      }
            | NoiseTOP { _noiseTMonochrome :: Maybe (Tree Bool)
                       , _noiseTResolution :: IVec2
                       , _noiseTTranslate :: Vec3
@@ -693,6 +695,7 @@ instance Op TOP where
                                     , "hueoffset" <$$> _hsvAdjHueOffset
                                     ]
   pars (LevelTOP {..}) = catMaybes [("opacity" <$$> _levelOpacity), "brightness1" <$$> _levelBrightness]
+  pars n@(NdiInTOP {..}) = [ ("name", Resolve _ndiinName) ]
   pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
   pars (Ramp t p r dat) = ("dat", ResolveP dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
@@ -724,6 +727,7 @@ instance Op TOP where
   opType (HSVAdjust {}) = "hsvAdjustTop"
   opType (LevelTOP {}) = "levelTop"
   opType (MovieFileIn {}) = "movieFileIn"
+  opType (NdiInTOP {}) = "ndiinTop"
   opType (NoiseTOP _ _ _) = "noiseTop"
   opType (NullTOP {}) = "nullTop"
   opType (OutTOP {})= "outTop"
@@ -1032,6 +1036,10 @@ levelT' f = N <$> f. LevelTOP Nothing Nothing . (:[])
 movieFileIn = movieFileIn' id
 movieFileIn' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
 movieFileIn' f file = N . f $ (MovieFileIn file Nothing Nothing emptyV2)
+
+ndiinT :: String -> Tree TOP
+ndiinT n = N $ (NdiInTOP (str n))
+
 
 noiseT' :: (TOP -> TOP) -> Tree TOP
 noiseT' f = N $ f $ NoiseTOP Nothing emptyV2 emptyV3
