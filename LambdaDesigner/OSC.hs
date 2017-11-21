@@ -183,7 +183,7 @@ parseCommand pre (Store bs t) = do ttype <- parseParam pre t
 opsMessages :: (Monad m, Op a) => BS.ByteString -> a -> StateT Messages m BS.ByteString
 opsMessages pre a = do let ty = opType a
                        messages <- get
-                       let addr = BS.append (findEmpty ty messages) pre
+                       let addr = findEmpty ty pre messages
                        let createMessage = Create ty
                        let textMessage =
                              case text a of
@@ -218,11 +218,8 @@ removeDuplicates addr = do messages <- get
                                                   return maddr
                              _ -> return addr
 
-findEmpty :: BS.ByteString -> Messages -> BS.ByteString
-findEmpty ty ms = BS.concat ["/", ty, "_", BS.pack . findKey 0 . L.map BS.unpack . L.sort . T.keys $ submap (BS.append "/" ty) ms]
-  where
-    findKey n [] = show n
-    findKey n (x:xs) = if (L.tail $ L.dropWhile (/= '_') x) == show n then findKey (n + 1) xs else show n
+findEmpty :: BS.ByteString -> BS.ByteString -> Messages -> BS.ByteString
+findEmpty ty pre ms = L.head . L.filter (not . flip T.member ms) . L.map (\n -> BS.concat ["/", ty, "_", BS.pack $ show n, pre]) $ [0..]
 
 applyRevPars :: Messages -> Messages
 applyRevPars ms = L.foldl (\ms (a, msgs) -> parseMessages ms a msgs) ms $ T.toList ms
