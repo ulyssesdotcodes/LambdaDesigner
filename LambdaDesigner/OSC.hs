@@ -85,13 +85,13 @@ instance Ord Message where
   compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
   compare _ _ = EQ
 
-parseParam :: (Monad m) => BS.ByteString -> Tree a -> StateT Messages m BS.ByteString
-parseParam pre t@(N p) = parseTree pre t >>= return . wrapOp
-parseParam pre t@(Comp {}) = parseTree pre t >>= return . wrapOp
-parseParam pre t@(FC {}) = parseTree pre t >>= return . wrapOp
-parseParam pre t@(FT {}) = parseTree pre t >>= return . wrapOp
-parseParam pre t@(Fix {}) = parseTree pre t >>= return . wrapOp
-parseParam pre t = parseTree pre t
+parseParam :: (Monad m) => Tree a -> StateT Messages m BS.ByteString
+parseParam t@(N p) = parseTree "" t >>= return . wrapOp
+parseParam t@(Comp {}) = parseTree "" t >>= return . wrapOp
+parseParam t@(FC {}) = parseTree "" t >>= return . wrapOp
+parseParam t@(FT {}) = parseTree "" t >>= return . wrapOp
+parseParam t@(Fix {}) = parseTree "" t >>= return . wrapOp
+parseParam t = parseTree "" t
 
 wrapOp :: BS.ByteString -> BS.ByteString
 wrapOp op = BS.concat ["op(\"", BS.tail op, "\")"]
@@ -152,31 +152,31 @@ parseTree pre (Fix name op) = do messages <- get
                                                return name'
 
 parseTree pre (PyExpr s) = pure s
-parseTree pre (ChopChan n c) = do addr <- parseParam pre c
+parseTree pre (ChopChan n c) = do addr <- parseParam c
                                   return $ BS.concat [addr, "[", n, "]"]
-parseTree pre (Cell (r, c) t) = do addr <- parseParam pre t
-                                   r' <- parseParam pre r
-                                   c' <- parseParam pre c
+parseTree pre (Cell (r, c) t) = do addr <- parseParam t
+                                   r' <- parseParam r
+                                   c' <- parseParam c
                                    return $ BS.concat [addr, "[", r', ",", c', "]"]
-parseTree pre (NumRows t) = do addr <- parseParam pre t
+parseTree pre (NumRows t) = do addr <- parseParam t
                                return $ BS.concat [addr, ".numRows"]
-parseTree pre (Mod f ta) = do aaddr <- parseParam pre ta
+parseTree pre (Mod f ta) = do aaddr <- parseParam ta
                               return . f $ aaddr
-parseTree pre (Mod2 f ta tb) = do aaddr <- parseParam pre ta
-                                  baddr <- parseParam pre tb
+parseTree pre (Mod2 f ta tb) = do aaddr <- parseParam ta
+                                  baddr <- parseParam tb
                                   return $ f aaddr baddr
-parseTree pre (Mod3 f ta tb tc) = do aaddr <- parseParam pre ta
-                                     baddr <- parseParam pre tb
-                                     caddr <- parseParam pre tc
+parseTree pre (Mod3 f ta tb tc) = do aaddr <- parseParam ta
+                                     baddr <- parseParam tb
+                                     caddr <- parseParam tc
                                      return $ f aaddr baddr caddr
-parseTree pre (Cast f a) = do aaddr <- parseParam pre a
+parseTree pre (Cast f a) = do aaddr <- parseParam a
                               return $ f aaddr
 parseTree pre (Resolve r) = parseTree pre r
-parseTree pre (ResolveP r) = parseParam pre r
+parseTree pre (ResolveP r) = parseParam r
 
 parseCommand :: (Monad m) => BS.ByteString -> CommandType -> StateT Messages m Messagable
 parseCommand pre (Pulse bs v f) = pure $ Command "pulse" [bs, v, BS.pack $ show f]
-parseCommand pre (Store bs t) = do ttype <- parseParam pre t
+parseCommand pre (Store bs t) = do ttype <- parseParam t
                                    return $ Command "store" [bs, ttype]
 
 
@@ -190,11 +190,11 @@ opsMessages pre a = do let ty = opType a
                                Just content -> [TextContent content]
                                Nothing -> []
                        modify $ T.insert addr (createMessage:textMessage)
-                       mapM_ (\(k, p) -> do val <- parseParam pre p
+                       mapM_ (\(k, p) -> do val <- parseParam p
                                             let msg = Parameter k val
                                             modify $ T.adjust ((:) msg) addr
                                             return ()) (pars a)
-                       mapM_ (\(k, p) -> do val <- parseParam pre p
+                       mapM_ (\(k, p) -> do val <- parseParam p
                                             let msg = CustomPar k val
                                             modify $ T.adjust ((:) msg) addr
                                             return ()) (customPars a)
