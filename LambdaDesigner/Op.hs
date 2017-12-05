@@ -12,13 +12,13 @@ module LambdaDesigner.Op where
 import Prelude hiding (sin)
 
 import Control.Lens
-import Data.Bool
 import Data.Matrix
 import Data.Maybe
 import Data.Monoid
 
 import Data.ByteString.Char8 as BS
 import Data.List as L
+import qualified Data.Bool as DB
 
 
 data CommandType = Pulse ByteString ByteString Int
@@ -151,6 +151,11 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                    , _datVars :: [(ByteString, Tree ByteString)]
                    }
          | InDAT
+         | OscInDAT { _oscInDPort :: Tree ByteString
+                     , _oscInDSplitBundle :: Maybe (Tree Bool)
+                     , _oscInDSplitMessages :: Maybe (Tree Bool)
+                     , _oscInDBundleTimestamp :: Maybe (Tree Bool)
+                     }
          | OutDAT { _datIns :: [Tree DAT]
                   }
          | ScriptDAT { _scriptDatDat :: Tree DAT
@@ -350,7 +355,7 @@ int :: Int -> Tree Int
 int = PyExpr . pack . show
 
 bool :: Bool -> Tree Bool
-bool = PyExpr . Data.Bool.bool "0" "1"
+bool = PyExpr . DB.bool "0" "1"
 
 str :: String -> Tree ByteString
 str = PyExpr . pack . show
@@ -363,6 +368,9 @@ bstr = PyExpr . pack
 
 (!*) :: (Show a) => Tree a -> Tree a -> Tree a
 (!*) = Mod2 (\a b -> BS.concat ["(", a, "*", b, ")"])
+
+(!^) :: (Show a) => Tree a -> Tree a -> Tree a
+(!^) = Mod2 (\a b -> BS.concat ["(", a, "**", b, ")"])
 
 (!%) :: (Show a) => Tree a -> Tree a -> Tree a
 (!%) = Mod2 (\a b -> BS.concat ["(", a, "%", b, ")"])
@@ -585,6 +593,7 @@ instance Op DAT where
                                                                                     , ("valuechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> vc
                                                                                     ])
   pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> _deTableChange])
+  pars n@(OscInDAT {..}) = ("port", _oscInDPort):(catMaybes ["splitbundle" <$$> _oscInDSplitBundle, "splitmessage" <$$> _oscInDSplitMessages, "bundletimestamp" <$$> _oscInDBundleTimestamp])
   pars (ScriptDAT {..}) = [("callbacks", ResolveP _scriptDatDat)]
   pars (SelectDAT {..}) = maybe altChoice (\row -> [("rowindexstart", Resolve row), ("rowindexend", Resolve row), ("extractrows", Resolve $ int 2)]) _selectDRI ++ [("dat", ResolveP _selectDat)]
                           where
@@ -606,6 +615,7 @@ instance Op DAT where
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opType (DatExec {}) = "datExec"
   opType (InDAT {}) = "inDat"
+  opType (OscInDAT {}) = "oscInDat"
   opType (OutDAT {}) = "outDat"
   opType (ScriptDAT {}) = "scriptDat"
   opType (SelectDAT {}) = "selectDat"
@@ -868,8 +878,8 @@ nullC' f = N <$> f . NullCHOP Nothing . (:[])
 nullC = nullC' id
 cookC = nullC' (nullCCookType ?~ int 1)
 
-oscin :: Int -> Tree CHOP
-oscin p = N $ OscInCHOP (Resolve $ int p)
+oscinC :: Int -> Tree CHOP
+oscinC p = N $ OscInCHOP (Resolve $ int p)
 
 opsadd :: CHOP -> CHOP
 opsadd = mathCombChops .~ Just (int 1)
@@ -920,6 +930,9 @@ datExec' f d = N $ f $ DatExec d Nothing []
 fileD' :: (DAT -> DAT) -> String -> Tree DAT
 fileD' f file = N . f $ (TextDAT Nothing (Just . PyExpr $ BS.pack ("\"" ++ file ++ "\"")) [])
 fileD = fileD' id
+
+oscinD :: Int -> Tree DAT
+oscinD p = N $ OscInDAT (Resolve $ int p) (Just $ bool True) (Just $ bool True) (Just $ bool True)
 
 scriptD :: String -> Tree DAT -> Tree DAT
 scriptD file = N <$> ScriptDAT (fileD file) . (:[])

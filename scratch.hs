@@ -12,6 +12,4 @@ import Data.Matrix
 import qualified Data.ByteString.Char8 as BS
 
 go = do r <- newIORef mempty
-        run r [outT $ flipT' id $ fade' id id (chopChan0 $ analyze (int 6) audioIn) $ blur (float 2) $ fade' id (flipT' id) (float 0.9) $ rectangle (Just $ float 0.5, Just $ float 0.5)]
-
-fade' f l o t = feedbackT t (\t' -> l $ compT 0 [t, levelT' (levelOpacity ?~ o) t']) f
+        run r [outT $ transformT' (transformScale .~ (Just $ float 0.5 !^ float (-1), Just $ float 0.5 !^ float (-1))) $ rectangle (Just $ float 0.2, Just $ float 0.2)]
