@@ -5,10 +5,12 @@ version:             0.1.0.0
 homepage:            https://github.com/ulyssesp/LambdaDesigner#readme
 license:             BSD3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2017 Author name here
-category:            Web
+author:              Ulysses Popple
+maintainer:          ulysses.popple@gmail.com
+copyright:           2017 Ulysses Popple
+synopsis:            A type-safe EDSL for TouchDesigner written in Haskell.
+description:         TouchDesigner nodes written as functions in Haskell and sent to TouchDesigner as json.
+category:            TouchDesigner
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
