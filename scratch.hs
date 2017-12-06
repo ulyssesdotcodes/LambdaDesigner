@@ -12,4 +12,4 @@ import Data.Matrix
 import qualified Data.ByteString.Char8 as BS
 
 go = do r <- newIORef mempty
-        run r [outT $ transformT' (transformScale .~ (Just $ float 0.5 !^ float (-1), Just $ float 0.5 !^ float (-1))) $ rectangle (Just $ float 0.2, Just $ float 0.2)]
+        run r [outT $ textT' ((textFontSize ?~ (float 32)) . (textAlign .~ iv2 (0, 2))) (str "Testing 1\n2\n3\n")]
