@@ -208,6 +208,8 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
          | Sweep { _sopIns :: [Tree SOP]
                  }
          | TransformSOP { _transformSUniformScale :: Maybe (Tree Float)
+                        , _transformSScale :: Vec3
+                        , _transformSTranslate :: Vec3
                         , _sopIns :: [Tree SOP]
                         }
 
@@ -672,6 +674,7 @@ instance Op SOP where
   pars (Metaball {..}) = vec3Map' "rad" _metaballRadius ++ vec3Map' "t" _metaballCenter
   pars (NoiseSOP t _) = vec3Map' "t" t
   pars (TransformSOP {..}) = catMaybes ["scale" <$$> _transformSUniformScale]
+                             ++ vec3Map' "t" _transformSTranslate ++ vec3Map' "s" _transformSScale
   pars _ = []
   opType (CHOPToSOP {}) = "chopToSop"
   opType (CircleSOP {}) = "circleSop"
@@ -1001,7 +1004,7 @@ chopToS' f c i = N . f $ CHOPToSOP c Nothing Nothing (maybeToList i)
 chopToS = chopToS' id
 
 transformS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
-transformS' f = N <$> f . (TransformSOP Nothing) . (:[])
+transformS' f = N <$> f . (TransformSOP Nothing emptyV3 emptyV3) . (:[])
 transformS = transformS' id
 
 scaleS :: Tree Float -> Tree SOP -> Tree SOP
