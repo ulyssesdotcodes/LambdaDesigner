@@ -117,12 +117,25 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                       }
           | OutCHOP { _chopIns :: [Tree CHOP]
                     }
-          | SelectCHOP { _selectCChop :: Maybe (Tree CHOP)
+          | ReplaceCHOP { _chopIns :: [Tree CHOP]
+                        }
+          | SelectCHOP { _selectCNames :: Maybe (Tree ByteString)
+                       , _selectCChop :: Maybe (Tree CHOP)
                        }
+          | ShuffleCHOP { _shuffleCMethod :: Tree Int
+                        , _chopIns :: [Tree CHOP]
+                        }
           | SOPToCHOP { _sopToChopSop :: Tree SOP }
           | SwitchCHOP { _switchCIndex :: Tree Int
                        , _chopIns :: [Tree CHOP]
                        }
+          | TOPToCHOP { _topToChopRName :: Maybe (Tree ByteString)
+                      , _topToChopGName :: Maybe (Tree ByteString)
+                      , _topToChopBName :: Maybe (Tree ByteString)
+                      , _topToChopDownloadType :: Maybe (Tree Int)
+                      , _topToChopCrop :: Maybe (Tree Int)
+                      , _topToChopTop :: Tree TOP
+                      }
           | Timer { _timerSegments :: Maybe (Tree DAT)
                   , _timerShowSeg :: Maybe (Tree Bool)
                   , _timerShowRunning :: Maybe (Tree Bool)
@@ -183,6 +196,7 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
 
 data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
                      , _chopToSopAttrScope :: Maybe (Tree BS.ByteString)
+                     , _chopToSChanScope :: Maybe (Tree BS.ByteString)
                      , _chopToSResample :: Maybe (Tree Bool)
                      , _sopIns :: [Tree SOP]
                      }
@@ -192,6 +206,10 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
                      }
          | InSOP
          | LineSOP
+         | GridSOP { _gridPrimitive :: Maybe (Tree Int)
+                   , _gridRows :: Maybe (Tree Int)
+                   , _gridColumns :: Maybe (Tree Int)
+                   }
          | Metaball { _metaballRadius :: Vec3
                     , _metaballCenter :: Vec3
                     }
@@ -257,6 +275,7 @@ data TOP = Blur { _blurSize :: Tree Float
                        }
            | LevelTOP { _levelOpacity :: Maybe (Tree Float)
                       , _levelBrightness :: Maybe (Tree Float)
+                      , _levelInvert :: Maybe (Tree Float)
                       , _topIns :: [Tree TOP]
                       }
            | InTOP
@@ -306,6 +325,7 @@ data TOP = Blur { _blurSize :: Tree Float
                        , _transformScale :: Vec2
                        , _transformRotate :: Maybe (Tree Float)
                        , _topPasses :: Maybe (Tree Int)
+                       , _topResolution :: IVec2
                        , _topIns :: [Tree TOP]
                        }
            | VideoDeviceIn
@@ -331,7 +351,8 @@ data BaseCOMP = BaseCOMP { _baseParams :: [(ByteString, Tree ByteString)]
                          , _externalTox :: Maybe (Tree ByteString)
                          }
 
-data Light = Light
+data Light = Light { _lightShadowType :: Maybe (Tree Int)
+                   }
 
 data Tree a where
   N :: (Op a) => a -> Tree a
@@ -535,9 +556,18 @@ instance Op CHOP where
   pars n@(NullCHOP {..}) = catMaybes [("cooktype" <$$> _nullCCookType)] ++ chopBasePars n
   pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
   pars (OutCHOP _) = []
-  pars n@(SelectCHOP c) = catMaybes [(("chop",) . ResolveP <$> c)] ++ chopBasePars n
+  pars n@(ReplaceCHOP {..}) = chopBasePars n
+  pars n@(SelectCHOP {..}) = catMaybes [(("chop",) . ResolveP <$> _selectCChop), "channames" <$$> _selectCNames] ++ chopBasePars n
+  pars n@(ShuffleCHOP {..}) = [("method", Resolve _shuffleCMethod)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
+  pars n@(TOPToCHOP {..}) = [("top", ResolveP _topToChopTop)] ++
+                            catMaybes [ "downloadtype" <$$> _topToChopDownloadType
+                                      , "crop" <$$> _topToChopCrop
+                                      , "r" <$$> _topToChopRName
+                                      , "g" <$$> _topToChopGName
+                                      , "b" <$$> _topToChopBName
+                                      ] ++ chopBasePars n
   pars n@(Timer {..}) = catMaybes [ ("segdat",) . ResolveP <$> _timerSegments
                                   , ("callbacks",) . ResolveP <$> _timerCallbacks
                                   , ("length" <$$> _timerLengthSeconds)
@@ -577,8 +607,11 @@ instance Op CHOP where
   opType (OscInCHOP {}) = "oscInChop"
   opType (OutCHOP {}) = "outChop"
   opType (SwitchCHOP {}) = "switchChop"
-  opType (SelectCHOP _) = "selectChop"
+  opType (ReplaceCHOP {}) = "replaceChop"
+  opType (SelectCHOP {}) = "selectChop"
+  opType (ShuffleCHOP {}) = "shuffleChop"
   opType (SOPToCHOP _) = "sopToChop"
+  opType (TOPToCHOP {}) = "topToChop"
   opType (Timer {}) = "timer"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
   commands (Timer {..}) = L.map fst . L.filter snd $ L.zip [Pulse "start" "1" 2, Pulse "cuepulse" "1" 1, Pulse "initialize" "1" 1] [_timerStart, _timerCue, _timerInit]
@@ -669,7 +702,11 @@ instance Baseable MAT where
 
 instance Op SOP where
   pars (CircleSOP p a _) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
-  pars (CHOPToSOP c a r _) = ("chop", ResolveP c):(catMaybes [("attscope" <$$> a), ("mapping" <$$> r)])
+  pars (GridSOP {..}) = catMaybes ["type" <$$> _gridPrimitive, "rows" <$$> _gridRows, "cols" <$$> _gridColumns]
+  pars (CHOPToSOP {..}) = ("chop", ResolveP _chopToSopChop):(catMaybes [ ("chanscope" <$$> _chopToSChanScope)
+                                                                       , ("attscope" <$$> _chopToSopAttrScope)
+                                                                       , ("mapping" <$$> _chopToSResample)
+                                                                       ])
   pars (Sphere p _) = catMaybes [ ("type" <$$> p) ]
   pars (Metaball {..}) = vec3Map' "rad" _metaballRadius ++ vec3Map' "t" _metaballCenter
   pars (NoiseSOP t _) = vec3Map' "t" t
@@ -678,6 +715,7 @@ instance Op SOP where
   pars _ = []
   opType (CHOPToSOP {}) = "chopToSop"
   opType (CircleSOP {}) = "circleSop"
+  opType (GridSOP {}) = "gridSop"
   opType (InSOP {}) = "inSop"
   opType (LineSOP {}) = "lineSop"
   opType (MergeSOP {}) = "mergeSop"
@@ -712,7 +750,7 @@ instance Op TOP where
                                     , "valuemult" <$$> _hsvAdjValMult
                                     , "hueoffset" <$$> _hsvAdjHueOffset
                                     ]
-  pars (LevelTOP {..}) = catMaybes [("opacity" <$$> _levelOpacity), "brightness1" <$$> _levelBrightness]
+  pars (LevelTOP {..}) = catMaybes [("opacity" <$$> _levelOpacity), "brightness1" <$$> _levelBrightness, "invert" <$$> _levelInvert]
   pars n@(NdiInTOP {..}) = [ ("name", Resolve _ndiinName) ]
   pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
@@ -764,13 +802,15 @@ instance Op TOP where
   connections (maybeToList . flip (^?) topIns -> cs) = mconcat cs
 
 topBasePars :: TOP -> [(ByteString, (Tree ByteString))]
-topBasePars c = catMaybes [ "resolutionw" <$$> (c ^? topResolution._1._Just)
-                          , "resolutionh" <$$> (c ^? topResolution._2._Just)
-                          , "format" <$$> (c ^? pixelFormat._Just)
-                          , "npasses" <$$> (c ^? topPasses._Just)
-                          , ("outputresolution",) <$> (fmap (const (Resolve $ int 9)) $ safeHead $
-                              catMaybes [c ^? topResolution._1._Just, c ^? topResolution._2._Just])
-                          ]
+topBasePars c =  catMaybes [ "resolutionw" <$$> (c ^? topResolution._1._Just)
+                           , "resolutionh" <$$> (c ^? topResolution._2._Just)
+                           , "format" <$$> (c ^? pixelFormat._Just)
+                           , "npasses" <$$> (c ^? topPasses._Just)
+                           , ("outputresolution",) <$> (fmap (const (Resolve $ int 9)) $ safeHead $
+                               catMaybes [c ^? topResolution._1._Just, c ^? topResolution._2._Just])
+                           , ("outputaspect",) <$> (fmap (const (Resolve $ int 1)) $ safeHead $
+                               catMaybes [c ^? topResolution._1._Just, c ^? topResolution._2._Just])
+                           ]
 safeHead :: [a] -> Maybe a
 safeHead [] = Nothing
 safeHead (x:xs) = Just x
@@ -788,7 +828,8 @@ instance Op Camera where
   pars (Camera t) = vec3Map' "t" t
 
 instance Op Light where
-  opType Light = "light"
+  pars (Light {..}) = catMaybes ["shadowtype" <$$> _lightShadowType]
+  opType Light {} = "light"
 
 instance Op BaseCOMP where
   pars (BaseCOMP {..}) = catMaybes ["externaltox" <$$> _externalTox]
@@ -902,14 +943,25 @@ opaddf a = mathAdd .~ Just (float a)
 opmultf :: Float -> CHOP -> CHOP
 opmultf a = mathMult .~ Just (float a)
 
+replaceC :: [Tree CHOP] -> Tree CHOP
+replaceC = N <$> ReplaceCHOP
+
 sopToC :: Tree SOP -> Tree CHOP
 sopToC = N <$> SOPToCHOP
 
-selectC :: Tree CHOP -> Tree CHOP
-selectC = N <$> SelectCHOP . Just
+selectC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
+selectC' f = N . f <$> SelectCHOP Nothing . Just
+selectC = selectC' id
+
+shuffleC :: Tree Int -> Tree CHOP -> Tree CHOP
+shuffleC s = N <$> ShuffleCHOP s . (:[])
 
 switchC :: Tree Int -> [Tree CHOP] -> Tree CHOP
 switchC i = N <$> SwitchCHOP i
+
+topToC' :: (CHOP -> CHOP) -> Tree TOP -> Tree CHOP
+topToC' f = N . f <$> TOPToCHOP Nothing Nothing Nothing Nothing Nothing
+topToC = topToC' id
 
 data TimerSegment = TimerSegment { segDelay :: Float
                                  , segLength :: Float
@@ -976,6 +1028,10 @@ circleS' :: (SOP -> SOP) -> Tree SOP
 circleS' f = N . f $ CircleSOP Nothing Nothing []
 circleS = circleS' id
 
+gridS' :: (SOP -> SOP) -> Tree SOP
+gridS' f = N . f $ GridSOP Nothing Nothing Nothing
+gridS = gridS' id
+
 lineS :: Tree SOP
 lineS = N $ LineSOP
 
@@ -1000,7 +1056,7 @@ outS :: Tree SOP -> Tree SOP
 outS = N <$> OutSOP . (:[])
 
 chopToS' :: (SOP -> SOP) -> Tree CHOP -> Maybe (Tree SOP) -> Tree SOP
-chopToS' f c i = N . f $ CHOPToSOP c Nothing Nothing (maybeToList i)
+chopToS' f c i = N . f $ CHOPToSOP c Nothing Nothing Nothing (maybeToList i)
 chopToS = chopToS' id
 
 transformS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
@@ -1056,7 +1112,7 @@ hsvT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 hsvT' f = N <$> f. HSVAdjust Nothing Nothing Nothing . (:[])
 
 levelT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
-levelT' f = N <$> f. LevelTOP Nothing Nothing . (:[])
+levelT' f = N <$> f. LevelTOP Nothing Nothing Nothing . (:[])
 
 movieFileIn = movieFileIn' id
 movieFileIn' :: (TOP -> TOP) -> Tree ByteString -> Tree TOP
@@ -1101,7 +1157,7 @@ textT' f tx = N . f $ TextTOP tx emptyV3 Nothing emptyV2 emptyV2
 textT = textT' id
 
 transformT' :: (TOP -> TOP) -> Tree TOP -> Tree TOP
-transformT' f = N <$> f . (TransformTOP emptyV2 Nothing emptyV2 Nothing Nothing) . (:[])
+transformT' f = N <$> f . (TransformTOP emptyV2 Nothing emptyV2 Nothing Nothing emptyV2) . (:[])
 transformT = transformT' id
 
 vidIn :: Tree TOP
@@ -1117,8 +1173,9 @@ cam' :: (Camera -> Camera) -> Tree Camera
 cam' f = N . f $ Camera emptyV3
 cam = cam' id
 
-light :: Tree Light
-light = N Light
+light' :: (Light -> Light) -> Tree Light
+light' f = N . f $ Light Nothing
+light = light' id
 
 base :: (Baseable a, Baseable b) => (Tree a -> Tree b) -> Tree a -> Tree b
 base = BComp $ BaseCOMP [] Nothing

@@ -40,7 +40,7 @@ data Messagable = Create BS.ByteString
                 | Connect Int BS.ByteString
                 | RevConnect Int BS.ByteString
                 | Parameter BS.ByteString BS.ByteString
-                | RevParameter BS.ByteString BS.ByteString
+                | RevParameter BS.ByteString BS.ByteString BS.ByteString
                 | CustomPar BS.ByteString BS.ByteString
                 | TextContent BS.ByteString
                 | Command BS.ByteString [BS.ByteString]
@@ -101,6 +101,7 @@ parseTree pre (N p) = opsMessages pre p
 parseTree pre (Comp p child) = do addr <- opsMessages pre p
                                   tr <- execStateT (parseTree pre child) T.empty
                                   let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
+                                      modMsg ((RevParameter i a b):ms) = (RevParameter i (BS.concat [addr, a]) b):(modMsg ms)
                                       modMsg (m:ms) = m:(modMsg ms)
                                       modMsg [] = []
                                   modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
@@ -124,9 +125,9 @@ parseTree pre (Tox p mf) = do addr <- opsMessages pre p
                                 Nothing -> return addr
 parseTree pre (FC fpars reset loop sel) = do faddr <- parseTree pre $ N $ fpars & chopIns .~ [reset]
                                              let fname = BS.tail faddr
-                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ N $ SelectCHOP Nothing)
+                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ N $ SelectCHOP Nothing Nothing)
                                              let lname = BS.tail laddr
-                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ N (SelectCHOP $ Just $ fix lname $ N $ SelectCHOP Nothing)
+                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ N (SelectCHOP Nothing $ Just $ fix lname $ N $ SelectCHOP Nothing Nothing)
                                              let sname = BS.tail saddr
                                              modify $ T.adjust ((:) (RevConnect 0 faddr)) saddr
                                              removeDuplicates saddr
@@ -137,7 +138,7 @@ parseTree pre (FT fpars reset loop sel) = do faddr <- parseTree pre $ N $ fpars 
                                              let lname = BS.tail laddr
                                              saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ N (SelectTOP $ Just $ fix lname $ N $ SelectTOP Nothing)
                                              let sname = BS.tail saddr
-                                             modify $ T.adjust ((:) (RevParameter "top" faddr)) saddr
+                                             modify $ T.adjust ((:) (RevParameter "top" faddr laddr)) saddr
                                              removeDuplicates saddr
                                              return laddr
 parseTree pre (Fix name op) = do messages <- get
@@ -224,7 +225,7 @@ findEmpty ty pre ms = L.head . L.filter (not . flip T.member ms) . L.map (\n -> 
 applyRevPars :: Messages -> Messages
 applyRevPars ms = L.foldl (\ms (a, msgs) -> parseMessages ms a msgs) ms $ T.toList ms
   where
-    parseMessages ms addr ((RevParameter par dest):msgs) = T.adjust ((:) (Parameter par (wrapOp addr))) dest ms
+    parseMessages ms addr ((RevParameter par dest local):msgs) = T.adjust ((:) (Parameter par (wrapOp local))) dest ms
     parseMessages ms addr ((RevConnect par dest):msgs) = T.adjust (addConnect par addr) dest ms
     parseMessages ms addr (_:msgs) = parseMessages ms addr msgs
     parseMessages ms addr [] = ms
