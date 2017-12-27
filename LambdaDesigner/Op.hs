@@ -209,6 +209,7 @@ data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
          | GridSOP { _gridPrimitive :: Maybe (Tree Int)
                    , _gridRows :: Maybe (Tree Int)
                    , _gridColumns :: Maybe (Tree Int)
+                   , _gridSurfType :: Maybe (Tree Int)
                    }
          | Metaball { _metaballRadius :: Vec3
                     , _metaballCenter :: Vec3
@@ -345,6 +346,8 @@ data Geo = Geo { _geoTranslate :: Vec3
                 }
 
 data Camera = Camera { _camTranslate :: Vec3
+                     , _camRotate :: Vec3
+                     , _camPivot :: Vec3
                      }
 
 data BaseCOMP = BaseCOMP { _baseParams :: [(ByteString, Tree ByteString)]
@@ -451,6 +454,12 @@ type Vec3 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
 type Vec4 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
 type IVec2 = (Maybe (Tree Int), Maybe (Tree Int))
 
+v2 :: Tree Float -> Tree Float -> Vec2
+v2 x y = (Just x, Just y)
+
+v3 :: Tree Float -> Tree Float -> Tree Float -> Vec3
+v3 x y z = (Just x, Just y, Just z)
+
 emptyV4 = (Nothing, Nothing, Nothing, Nothing)
 emptyV3 = (Nothing, Nothing, Nothing)
 emptyV2 = (Nothing, Nothing)
@@ -478,6 +487,9 @@ xV3 x = emptyV3 & _1 ?~ x
 
 iv2 :: (Int, Int) -> IVec2
 iv2 (x, y) = (Just $ int x, Just $ int y)
+
+v3mult :: Tree Float -> Vec3 -> Vec3
+v3mult m (x, y, z) = ((!* m) <$> x, (!* m) <$> y, (!* m) <$> z)
 
 vec4Map :: (ByteString, ByteString, ByteString, ByteString) -> String -> Vec4 -> [(ByteString, Tree ByteString)]
 vec4Map (x, y, z, w) n (xv, yv, zv, wv) = catMaybes [ BS.append (pack n) x <$$> xv
@@ -702,7 +714,11 @@ instance Baseable MAT where
 
 instance Op SOP where
   pars (CircleSOP p a _) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
-  pars (GridSOP {..}) = catMaybes ["type" <$$> _gridPrimitive, "rows" <$$> _gridRows, "cols" <$$> _gridColumns]
+  pars (GridSOP {..}) = catMaybes [ "type" <$$> _gridPrimitive
+                                  , "rows" <$$> _gridRows
+                                  , "cols" <$$> _gridColumns
+                                  , "surftype" <$$> _gridSurfType
+                                  ]
   pars (CHOPToSOP {..}) = ("chop", ResolveP _chopToSopChop):(catMaybes [ ("chanscope" <$$> _chopToSChanScope)
                                                                        , ("attscope" <$$> _chopToSopAttrScope)
                                                                        , ("mapping" <$$> _chopToSResample)
@@ -824,8 +840,8 @@ instance Op Geo where
   pars (Geo t s m us) = mconcat [catMaybes [("material",) . ResolveP <$> m, ("scale" <$$> us)], (vec3Map' "t" t), (vec3Map' "s" s)]
 
 instance Op Camera where
-  opType (Camera _) = "camera"
-  pars (Camera t) = vec3Map' "t" t
+  opType (Camera {}) = "camera"
+  pars (Camera {..}) = vec3Map' "t" _camTranslate ++ vec3Map' "r" _camRotate ++ vec3Map' "p" _camPivot
 
 instance Op Light where
   pars (Light {..}) = catMaybes ["shadowtype" <$$> _lightShadowType]
@@ -1029,7 +1045,7 @@ circleS' f = N . f $ CircleSOP Nothing Nothing []
 circleS = circleS' id
 
 gridS' :: (SOP -> SOP) -> Tree SOP
-gridS' f = N . f $ GridSOP Nothing Nothing Nothing
+gridS' f = N . f $ GridSOP Nothing Nothing Nothing Nothing
 gridS = gridS' id
 
 lineS :: Tree SOP
@@ -1170,7 +1186,7 @@ geo' :: (Geo -> Geo) -> Tree SOP -> Tree Geo
 geo' f = Comp (f $ Geo emptyV3 emptyV3 Nothing Nothing)
 
 cam' :: (Camera -> Camera) -> Tree Camera
-cam' f = N . f $ Camera emptyV3
+cam' f = N . f $ Camera emptyV3 emptyV3 emptyV3
 cam = cam' id
 
 light' :: (Light -> Light) -> Tree Light
