@@ -74,6 +74,9 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | Delay { _delayFrames :: Tree Int
                   , _chopIns :: [Tree CHOP]
                   }
+          | ExpressionCHOP { _expressionCExprs :: [Tree Float]
+                           , _chopIns :: [Tree CHOP]
+                           }
           | Fan { _fanOp :: Maybe (Tree Int)
                 , _fanOffNeg :: Maybe (Tree Bool)
                 , _chopIns :: [Tree CHOP]
@@ -99,6 +102,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                  , _chopIns :: [Tree CHOP]
                  }
           | MergeCHOP { _mergeCDupes :: Maybe (Tree Int)
+                      , _mergeCAlign :: Maybe (Tree Int)
                       , _chopIns :: [Tree CHOP]
                       }
           | MidiIn
@@ -117,11 +121,23 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                       }
           | OutCHOP { _chopIns :: [Tree CHOP]
                     }
+          | RenameCHOP { _renameCTo :: Tree ByteString
+                       , _renameCFrom :: Maybe (Tree ByteString)
+                       , _chopIns :: [Tree CHOP]
+                       }
           | ReplaceCHOP { _chopIns :: [Tree CHOP]
                         }
+          | ResampleCHOP { _resampleEnd :: Maybe (Tree Int)
+                         , _resampleRate :: Maybe (Tree Int)
+                         , _chopTimeSlice :: Maybe (Tree Bool)
+                         , _chopIns :: [Tree CHOP]
+                         }
           | SelectCHOP { _selectCNames :: Maybe (Tree ByteString)
                        , _selectCChop :: Maybe (Tree CHOP)
                        }
+          | StretchCHOP { _stretchCEnd :: Tree Int
+                        , _chopIns :: [Tree CHOP]
+                        }
           | ShuffleCHOP { _shuffleCMethod :: Tree Int
                         , _chopIns :: [Tree CHOP]
                         }
@@ -151,6 +167,11 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerCycle :: Maybe (Tree Bool)
                   , _timerCycleLimit :: Maybe (Tree Bool)
                   }
+          | WaveCHOP { _waveExprs :: Tree Float
+                     , _waveEnd :: Tree Int
+                     , _waveCNames :: Maybe (Tree ByteString)
+                     , _waveRate :: Maybe (Tree Int)
+                     }
 
 data DAT = ChopExec { _chopExecChop :: Tree CHOP
                     , _ceOffToOn :: Maybe BS.ByteString
@@ -336,6 +357,7 @@ data MAT = ConstantMAT { _constColor :: Vec3
                        , _constMatMap :: Maybe (Tree TOP)
                        }
          | InMAT
+         | WireframeMAT
          | OutMAT { _matIns :: [Tree MAT]
                   }
 
@@ -343,6 +365,16 @@ data Geo = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
                 , _geoMat :: Maybe (Tree MAT)
                 , _geoUniformScale :: Maybe (Tree Float)
+                , _geoInstanceChop :: Maybe (Tree CHOP)
+                , _geoInstanceTX :: Maybe (Tree ByteString)
+                , _geoInstanceTY :: Maybe (Tree ByteString)
+                , _geoInstanceTZ :: Maybe (Tree ByteString)
+                , _geoInstanceRX :: Maybe (Tree ByteString)
+                , _geoInstanceRY :: Maybe (Tree ByteString)
+                , _geoInstanceRZ :: Maybe (Tree ByteString)
+                , _geoInstanceSX :: Maybe (Tree ByteString)
+                , _geoInstanceSY :: Maybe (Tree ByteString)
+                , _geoInstanceSZ :: Maybe (Tree ByteString)
                 }
 
 data Camera = Camera { _camTranslate :: Vec3
@@ -357,6 +389,8 @@ data BaseCOMP = BaseCOMP { _baseParams :: [(ByteString, Tree ByteString)]
 data Light = Light { _lightShadowType :: Maybe (Tree Int)
                    }
 
+data Channel
+
 data Tree a where
   N :: (Op a) => a -> Tree a
   FC :: CHOP -> Tree CHOP -> (Tree CHOP -> Tree CHOP) -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
@@ -366,13 +400,9 @@ data Tree a where
   Tox :: (Op a, Op b) => BaseCOMP -> Maybe (Tree a) -> Tree b
   Fix :: (Op a) => ByteString -> Tree a -> Tree a
   PyExpr :: ByteString -> Tree a
-  ChopChan :: ByteString -> Tree CHOP -> Tree Float
-  Cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree ByteString
-  NumRows :: Tree DAT -> Tree Int
-  Mod :: (ByteString -> ByteString) -> Tree n -> Tree n
+  Mod :: (ByteString -> ByteString) -> Tree a -> Tree b
   Mod2 :: (ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c
   Mod3 :: (ByteString -> ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c -> Tree d
-  Cast :: (ByteString -> ByteString) -> Tree a -> Tree b
   Resolve :: Tree a -> Tree ByteString
   ResolveP :: Tree a -> Tree ByteString
 
@@ -391,11 +421,26 @@ str = PyExpr . pack . show
 bstr :: String -> Tree ByteString
 bstr = PyExpr . pack
 
+casti :: (Integral i) => Tree f -> Tree i
+casti = Mod (\fl -> BS.concat ["int(", fl, ")"])
+
+castf :: (Floating f) => Tree i -> Tree f
+castf = Mod (\fl -> BS.concat ["float(", fl, ")"])
+
+caststr :: (Show a) => Tree a -> Tree ByteString
+caststr = Mod (\s -> BS.concat ["str(", s, ")"])
+
 (!+) :: (Show a) => Tree a -> Tree a -> Tree a
 (!+) = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
 
+(!-) :: (Show a) => Tree a -> Tree a -> Tree a
+(!-) = Mod2 (\a b -> BS.concat ["(", a, "-", b, ")"])
+
 (!*) :: (Show a) => Tree a -> Tree a -> Tree a
 (!*) = Mod2 (\a b -> BS.concat ["(", a, "*", b, ")"])
+
+(!/) :: (Show a) => Tree a -> Tree a -> Tree a
+(!/) = Mod2 (\a b -> BS.concat ["(", a, "/", b, ")"])
 
 (!^) :: (Show a) => Tree a -> Tree a -> Tree a
 (!^) = Mod2 (\a b -> BS.concat ["(", a, "**", b, ")"])
@@ -414,6 +459,18 @@ seconds = PyExpr "absTime.seconds"
 
 frames :: Tree Int
 frames = PyExpr "absTime.frame"
+
+sampleIndex :: Tree Int
+sampleIndex = PyExpr "me.sampleIndex"
+
+chanIndex :: Tree Int
+chanIndex = PyExpr "me.chanIndex"
+
+opInput :: (Op a) => Tree Int -> Tree a
+opInput = Mod (\i -> BS.concat ["me.inputs[", i, "]"])
+
+input :: (Op a) => Tree Int -> Tree a
+input = Mod (\i -> BS.concat ["me.inputs[", i, "]"])
 
 scycle :: Float -> Float -> Tree Float
 scycle a b =float b !* ((float a !* seconds) !% float 1)
@@ -437,17 +494,29 @@ pmax = Mod2 (\s t -> BS.concat ["max(", s, ", ", t, ")"])
 pyMathOp :: (Num n) => String -> Tree n -> Tree n
 pyMathOp s = Mod (\n -> BS.concat ["math.", pack s, "(", n, ")"])
 
-chopChan :: Int -> Tree CHOP -> Tree Float
-chopChan n = ChopChan (pack . show $ n)
+chan :: Int -> Tree CHOP -> Tree Channel
+chan n = Mod (\c -> BS.concat [c, "[", pack $ show n, "]"])
 
-chopChan0 :: Tree CHOP -> Tree Float
-chopChan0 = chopChan 0
+chan0 :: Tree CHOP -> Tree Channel
+chan0 = chan 0
 
-chopChanName :: String -> Tree CHOP -> Tree Float
-chopChanName s = ChopChan (pack $ "\"" ++ s ++ "\"")
+chanName :: String -> Tree CHOP -> Tree Channel
+chanName s = Mod (\c -> BS.concat [c, "[\"", pack s, "\"]"])
+
+chanf :: Int -> Tree CHOP -> Tree Float
+chanf = (fmap . fmap) castf chan
+
+chan0f :: Tree CHOP -> Tree Float
+chan0f = castf . chan0
+
+chanNamef :: String -> Tree CHOP -> Tree Float
+chanNamef = (fmap . fmap) castf chanName
+
+chanSample :: Tree Int -> Tree Channel -> Tree Float
+chanSample = Mod2 (\i c -> BS.concat [c, "[", i, "]"])
 
 numRows :: Tree DAT -> Tree Int
-numRows = NumRows
+numRows = Mod (\d -> BS.concat [d, ".numRows"])
 
 type Vec2 = (Maybe (Tree Float), Maybe (Tree Float))
 type Vec3 = (Maybe (Tree Float), Maybe (Tree Float), Maybe (Tree Float))
@@ -544,6 +613,10 @@ instance Op CHOP where
                                   , "resetcondition" <$$> _countResetCondition
                                   ] ++ chopBasePars n
   pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames)]
+  pars n@(ExpressionCHOP {..}) = mconcat [ [("numexpr", Resolve . int $ L.length _expressionCExprs)]
+                                         , chopBasePars n
+                                         , L.zipWith (\i e -> (BS.concat ["expr", (pack . show) i], Resolve e)) [0..] _expressionCExprs
+                                         ]
   pars n@(Fan o off _) = catMaybes ["fanop" <$$> o, "alloff" <$$> off] ++ chopBasePars n
   pars (FeedbackCHOP _) = []
   pars (Hold _) = []
@@ -557,7 +630,7 @@ instance Op CHOP where
                                  , "align" <$$> _mathAlign
                                  , "gain" <$$> _mathMult
                                  ] ++ chopBasePars n
-  pars n@(MergeCHOP {..}) = catMaybes [("duplicate" <$$> _mergeCDupes)] ++ chopBasePars n
+  pars n@(MergeCHOP {..}) = catMaybes ["duplicate" <$$> _mergeCDupes, "align" <$$> _mergeCAlign] ++ chopBasePars n
   pars MidiIn = []
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
                                       , "type" <$$> _noiseCType
@@ -568,11 +641,22 @@ instance Op CHOP where
   pars n@(NullCHOP {..}) = catMaybes [("cooktype" <$$> _nullCCookType)] ++ chopBasePars n
   pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
   pars (OutCHOP _) = []
+  pars n@(RenameCHOP {..}) = mconcat [catMaybes ["renamefrom" <$$> _renameCFrom], [("renameto", Resolve $ _renameCTo)], chopBasePars n]
   pars n@(ReplaceCHOP {..}) = chopBasePars n
+  pars n@(ResampleCHOP {..}) =
+    let
+      method (Just _) (Just _) = 3
+      method Nothing (Just _) = 0
+      method _ _ = 1
+    in
+      catMaybes [ "rate" <$$> _resampleRate
+                , "end" <$$> _resampleEnd
+                ] ++ [ ("method", Resolve . int $ method _resampleRate _resampleEnd) ] ++ chopBasePars n
   pars n@(SelectCHOP {..}) = catMaybes [(("chop",) . ResolveP <$> _selectCChop), "channames" <$$> _selectCNames] ++ chopBasePars n
   pars n@(ShuffleCHOP {..}) = [("method", Resolve _shuffleCMethod)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
+  pars n@(StretchCHOP {..}) = [("end", Resolve _stretchCEnd), ("relative", Resolve $ int 0)] ++ chopBasePars n
   pars n@(TOPToCHOP {..}) = [("top", ResolveP _topToChopTop)] ++
                             catMaybes [ "downloadtype" <$$> _topToChopDownloadType
                                       , "crop" <$$> _topToChopCrop
@@ -595,6 +679,16 @@ instance Op CHOP where
                                   , ("cycle" <$$> _timerCycle)
                                   , ("cyclelimit" <$$> _timerCycleLimit)
                                   ] ++ chopBasePars n
+  pars n@(WaveCHOP {..}) = mconcat [ chopBasePars n
+                                   , [ ("exprs", ResolveP _waveExprs)
+                                     , ("end", ResolveP _waveEnd)
+                                     , ("endunit", ResolveP $ int 1)
+                                     , ("wavetype", ResolveP $ int 7)
+                                     ]
+                                   , catMaybes [ "channelname" <$$> _waveCNames
+                                               , "rate" <$$> _waveRate
+                                               ]
+                                   ]
   opType (Analyze {}) = "analyze"
   opType (AudioDeviceOut {}) = "audioDevOut"
   opType (AudioFileIn {}) = "audioFileIn"
@@ -605,6 +699,7 @@ instance Op CHOP where
   opType (ConstantCHOP {}) = "constantChop"
   opType (Count {}) = "count"
   opType (Delay {}) = "delay"
+  opType (ExpressionCHOP {}) = "expressionChop"
   opType (Fan {}) = "fan"
   opType (FeedbackCHOP _) = "feedbackChop"
   opType (Hold {}) = "hold"
@@ -619,12 +714,16 @@ instance Op CHOP where
   opType (OscInCHOP {}) = "oscInChop"
   opType (OutCHOP {}) = "outChop"
   opType (SwitchCHOP {}) = "switchChop"
+  opType (StretchCHOP {}) = "stretchChop"
+  opType (RenameCHOP {}) = "renameChop"
   opType (ReplaceCHOP {}) = "replaceChop"
+  opType (ResampleCHOP {}) = "resampleChop"
   opType (SelectCHOP {}) = "selectChop"
   opType (ShuffleCHOP {}) = "shuffleChop"
   opType (SOPToCHOP _) = "sopToChop"
   opType (TOPToCHOP {}) = "topToChop"
   opType (Timer {}) = "timer"
+  opType (WaveCHOP {}) = "waveChop"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
   commands (Timer {..}) = L.map fst . L.filter snd $ L.zip [Pulse "start" "1" 2, Pulse "cuepulse" "1" 1, Pulse "initialize" "1" 1] [_timerStart, _timerCue, _timerInit]
   commands _ = []
@@ -702,9 +801,11 @@ instance Op MAT where
   pars (ConstantMAT rgb alpha cmap) = catMaybes [("alpha" <$$> alpha), ("colormap",) . ResolveP <$> cmap]
     ++ rgbMap "color" rgb
   pars InMAT = []
+  pars WireframeMAT = []
   pars (OutMAT _) = []
   opType (ConstantMAT {}) = "constMat"
   opType InMAT = "inMat"
+  opType WireframeMAT = "wireframeMat"
   opType (OutMAT _) = "outMat"
   connections (maybeToList . flip (^?) matIns -> cs) = mconcat cs
 
@@ -776,7 +877,7 @@ instance Op TOP where
                                 rgbMap "fillcolor" _rectangleColor ++
                                 rgbMap "border" _rectangleBorderColor ++
                                 catMaybes [ "borderwidth" <$$> _rectangleBorderWidth ] ++ topBasePars t
-  pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("light",) . ResolveP <$> _renderLight)
+  pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("lights",) . ResolveP <$> _renderLight)
   pars (SelectTOP c) = catMaybes [("top",) . ResolveP <$> c]
   pars t@(TextTOP {..}) = [("text", _textText)]
     ++ rgbMap "fontcolor" _textColor
@@ -836,8 +937,23 @@ instance Baseable TOP where
   outOp o = N $ OutTOP [o]
 
 instance Op Geo where
-  opType (Geo _ _ _ _) = "geo"
-  pars (Geo t s m us) = mconcat [catMaybes [("material",) . ResolveP <$> m, ("scale" <$$> us)], (vec3Map' "t" t), (vec3Map' "s" s)]
+  opType (Geo {}) = "geo"
+  pars (Geo {..}) = mconcat [ catMaybes [ ("material",) . ResolveP <$> _geoMat
+                                        , ("scale" <$$> _geoUniformScale)
+                                        , "instancetx" <$$> _geoInstanceTX
+                                        , "instancety" <$$> _geoInstanceTY
+                                        , "instancetz" <$$> _geoInstanceTZ
+                                        , "instancerx" <$$> _geoInstanceRX
+                                        , "instancery" <$$> _geoInstanceRY
+                                        , "instancerz" <$$> _geoInstanceRZ
+                                        , "instancesx" <$$> _geoInstanceSX
+                                        , "instancesy" <$$> _geoInstanceSY
+                                        , "instancesz" <$$> _geoInstanceSZ
+                                        ]
+                            , (vec3Map' "t" _geoTranslate)
+                            , (vec3Map' "s" _geoScale)
+                            , maybe [] (\ic -> [("instanceop", ResolveP ic), ("instancing", Resolve $ bool True)]) _geoInstanceChop
+                            ]
 
 instance Op Camera where
   opType (Camera {}) = "camera"
@@ -852,17 +968,6 @@ instance Op BaseCOMP where
   customPars (BaseCOMP {..}) = _baseParams
   opType (BaseCOMP {}) = "base"
   commands (BaseCOMP {..}) = []
-
--- Constructors
-
-casti :: (Integral i) => Tree f -> Tree i
-casti = Cast (\fl -> BS.concat ["int(", fl, ")"])
-
-castf :: (Floating f) => Tree i -> Tree f
-castf = Cast (\fl -> BS.concat ["float(", fl, ")"])
-
-caststr :: (Show a) => Tree a -> Tree ByteString
-caststr = Cast (\s -> BS.concat ["str(", s, ")"])
 
 -- CHOPs
 
@@ -908,6 +1013,9 @@ count = count' id
 delay :: Tree Int -> Tree CHOP -> Tree CHOP
 delay f = N <$> Delay f . (:[])
 
+expressionC :: [Tree Float] -> [Tree CHOP] -> Tree CHOP
+expressionC es is = N $ ExpressionCHOP es is
+
 feedbackC :: Tree CHOP -> (Tree CHOP -> Tree CHOP) -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
 feedbackC = FC (FeedbackCHOP [])
 
@@ -932,11 +1040,11 @@ math' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing
 
 mergeC' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
-mergeC' f = N . f <$> MergeCHOP Nothing
+mergeC' f = N . f <$> MergeCHOP Nothing Nothing
 mergeC = mergeC' id
 
 mchan :: String -> Tree Float
-mchan s = chopChanName s $ N MidiIn
+mchan s = chanNamef s $ N MidiIn
 
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
 noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing)
@@ -959,8 +1067,15 @@ opaddf a = mathAdd .~ Just (float a)
 opmultf :: Float -> CHOP -> CHOP
 opmultf a = mathMult .~ Just (float a)
 
+renameC' :: (CHOP -> CHOP) -> Tree ByteString -> Tree CHOP -> Tree CHOP
+renameC' f newName = N . f <$> RenameCHOP newName Nothing . (:[])
+renameC = renameC' id
+
 replaceC :: [Tree CHOP] -> Tree CHOP
 replaceC = N <$> ReplaceCHOP
+
+resampleC' :: (CHOP -> CHOP) -> Bool -> Tree CHOP -> Tree CHOP
+resampleC' f tc = N . f <$> ResampleCHOP Nothing Nothing (Just $ bool tc) . (:[])
 
 sopToC :: Tree SOP -> Tree CHOP
 sopToC = N <$> SOPToCHOP
@@ -972,12 +1087,19 @@ selectC = selectC' id
 shuffleC :: Tree Int -> Tree CHOP -> Tree CHOP
 shuffleC s = N <$> ShuffleCHOP s . (:[])
 
+stretchC :: Tree Int -> Tree CHOP -> Tree CHOP
+stretchC i = N <$> StretchCHOP i . (:[])
+
 switchC :: Tree Int -> [Tree CHOP] -> Tree CHOP
 switchC i = N <$> SwitchCHOP i
 
 topToC' :: (CHOP -> CHOP) -> Tree TOP -> Tree CHOP
 topToC' f = N . f <$> TOPToCHOP Nothing Nothing Nothing Nothing Nothing
 topToC = topToC' id
+
+waveC' :: (CHOP -> CHOP) -> Tree Int -> Tree Float -> Tree CHOP
+waveC' f e ex = N . f $ WaveCHOP ex e Nothing Nothing
+waveC = waveC' id
 
 data TimerSegment = TimerSegment { segDelay :: Float
                                  , segLength :: Float
@@ -999,7 +1121,7 @@ timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just
 -- DATs
 
 cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree BS.ByteString
-cell = Cell
+cell (r, c) = Mod3 (\r' c' d -> BS.concat [d, "[", r', ",", c', "]"]) r c
 
 chopExec' :: (DAT -> DAT) -> Tree CHOP -> Tree DAT
 chopExec' f chop = N $ f $ ChopExec chop Nothing Nothing Nothing Nothing Nothing
@@ -1037,6 +1159,9 @@ constM' f = N . f $ ConstantMAT emptyV3 Nothing Nothing
 
 topM :: Tree TOP -> Tree MAT
 topM t = constM' (constMatMap ?~ t)
+
+wireframeM :: Tree MAT
+wireframeM = N $ WireframeMAT
 
 -- SOPs
 
@@ -1183,7 +1308,14 @@ vidIn = N $ VideoDeviceIn
 -- COMPs
 
 geo' :: (Geo -> Geo) -> Tree SOP -> Tree Geo
-geo' f = Comp (f $ Geo emptyV3 emptyV3 Nothing Nothing)
+geo' f = Comp (f $ Geo emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)
+
+instanceGeo' :: (Geo -> Geo) -> Tree CHOP -> Tree SOP -> Tree Geo
+instanceGeo' f c = geo' (f
+                         . (geoInstanceTX ?~ str "tx") . (geoInstanceTY ?~ str "ty") . (geoInstanceTZ ?~ str "tz")
+                         . (geoInstanceRX ?~ str "rx") . (geoInstanceRY ?~ str "ry") . (geoInstanceRZ ?~ str "rz")
+                         . (geoInstanceSX ?~ str "sx") . (geoInstanceSY ?~ str "sy") . (geoInstanceSZ ?~ str "sz")
+                         . (geoInstanceChop ?~ c))
 
 cam' :: (Camera -> Camera) -> Tree Camera
 cam' f = N . f $ Camera emptyV3 emptyV3 emptyV3

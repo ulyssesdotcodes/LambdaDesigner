@@ -153,14 +153,6 @@ parseTree pre (Fix name op) = do messages <- get
                                                return name'
 
 parseTree pre (PyExpr s) = pure s
-parseTree pre (ChopChan n c) = do addr <- parseParam c
-                                  return $ BS.concat [addr, "[", n, "]"]
-parseTree pre (Cell (r, c) t) = do addr <- parseParam t
-                                   r' <- parseParam r
-                                   c' <- parseParam c
-                                   return $ BS.concat [addr, "[", r', ",", c', "]"]
-parseTree pre (NumRows t) = do addr <- parseParam t
-                               return $ BS.concat [addr, ".numRows"]
 parseTree pre (Mod f ta) = do aaddr <- parseParam ta
                               return . f $ aaddr
 parseTree pre (Mod2 f ta tb) = do aaddr <- parseParam ta
@@ -170,8 +162,6 @@ parseTree pre (Mod3 f ta tb tc) = do aaddr <- parseParam ta
                                      baddr <- parseParam tb
                                      caddr <- parseParam tc
                                      return $ f aaddr baddr caddr
-parseTree pre (Cast f a) = do aaddr <- parseParam a
-                              return $ f aaddr
 parseTree pre (Resolve r) = parseTree pre r
 parseTree pre (ResolveP r) = parseParam r
 
