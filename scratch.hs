@@ -14,33 +14,18 @@ import qualified Data.ByteString.Char8 as BS
 go =
   let
     ain = math' (mathMult ?~ float 10) [audioIn]
-    sgeo = instanceGeo' ((geoMat ?~ wireframeM)) poses (outS $ lineS)
-    instances = casti (volc !* float 30) !+ int 2
-    width = float 20
-    poses = mergeC' (mergeCAlign ?~ int 7) [tx, ty, rz, sx]
-    tx = waveC' (waveCNames ?~ str "tx") instances $ ((castf (sampleIndex !* casti width !* int 2)) !/ castf instances) !- width
-    ty = ain & resampleC' ((resampleEnd ?~ instances) . (resampleRate ?~ instances)) False & renameC (str "ty")
-    rz = waveC' (waveCNames ?~ str "rz") instances $ osin (castf sampleIndex) !* float 360
-    sx = waveC' (waveCNames ?~ str "sx") instances $ castf sampleIndex !* float 0.1
+    sgeo = instanceGeo' ((geoMat ?~ wireframeM)) poses (outS $ boxS' ((boxSScale._1 ?~ float 2) . (boxSScale._2 ?~ float 0.5)))
+    instances = int 40
+    poses = mergeC' (mergeCAlign ?~ int 7) [ty, tz]
+    ty = waveC' (waveCNames ?~ str "ty") instances $ ((castf sampleIndex !* float (0.5)) !- float 3.5) !+ (seconds !* (float (-0.5)) !% float 1)
+    tz = waveC' (waveCNames ?~ str "tz") instances $ (castf sampleIndex !* float (-1)) !+ (seconds !% float 2)
     centerCam t r = cam' ((camTranslate .~ t) . (camPivot .~ v3mult (float (-1)) t) . (camRotate .~ r))
-    grender = render sgeo (centerCam (v3 (float 0) (float 0) (float 50)) emptyV3)
+    grender = render sgeo (centerCam (v3 (float 0) (float 0) (float 5)) emptyV3)
     volume = analyze (int 6) ain
     volc = chan0f volume
-    -- ain = math' (mathMult ?~ float 0.3) [audioIn & audioSpectrum]
-    -- atex = chopToT ain
-    --        & transformT' ((transformScale._2 ?~ float 0.05) . (transformTranslate._2 ?~ float 0.5) . (topResolution .~ iv2 (128, 128)))
-    --        & (\t -> feedbackT t (\t' -> compT 0 [t, t' & levelT' (levelOpacity ?~ float 0.98) & transformT' (transformTranslate . _2 ?~ float (-0.01))]) id)
-    -- gsop = gridS' ((gridRows ?~ int 128) . (gridColumns ?~ int  128) . (gridPrimitive ?~ int 0) . (gridSurfType ?~ int 1))
-    -- gchop = sopToC gsop
-    -- gpos = replaceC [gchop, math' (opsadd) [selectC' (selectCNames ?~ str "tz") gchop, atex & topToC' ((topToChopRName ?~ str "r") . (topToChopDownloadType ?~ int 1) . (topToChopCrop ?~ int 4)) & shuffleC (int 2)]]
-    -- g = geo' (geoMat ?~ gmat) $ outS $ chopToS' id gpos $ Just gsop
-    -- centerCam t r = cam' ((camTranslate .~ t) . (camPivot .~ v3mult (float (-1)) t) . (camRotate .~ r))
-    -- grender = render' (renderLight ?~ (light' (lightShadowType ?~ int 2))) g (centerCam (mchanv3 "s1" (float 5)) (mchanv3 "s2" (float 360)))
-    -- gmat = constM' (constMatMap ?~ (palette neon 0 (1, 128) & translate' id (v2 (float 0) seconds)))
-    -- mchanv3 pre m = v3 (m !* mchan (pre ++ "a")) (m !* mchan (pre ++ "b")) (m !* mchan (pre ++ "c"))
   in
     do r <- newIORef mempty
-       run r [outT $ grender & fade (float 0.95)]
+       run r [outT $ grender]
 
 fade' f l o t = feedbackT t (\t' -> l $ compT 0 [t, levelT' (levelOpacity ?~ o) t']) f
 fade = fade' id id

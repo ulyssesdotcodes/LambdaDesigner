@@ -215,7 +215,9 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                    , _datVars :: [(ByteString, Tree ByteString)]
                    }
 
-data SOP = CHOPToSOP { _chopToSopChop :: Tree CHOP
+data SOP = BoxSOP { _boxSScale :: Vec3
+                  }
+         | CHOPToSOP { _chopToSopChop :: Tree CHOP
                      , _chopToSopAttrScope :: Maybe (Tree BS.ByteString)
                      , _chopToSChanScope :: Maybe (Tree BS.ByteString)
                      , _chopToSResample :: Maybe (Tree Bool)
@@ -814,6 +816,7 @@ instance Baseable MAT where
   outOp o = N $ OutMAT [o]
 
 instance Op SOP where
+  pars (BoxSOP {..}) = vec3Map' "size" _boxSScale
   pars (CircleSOP p a _) = catMaybes [ ("type" <$$> p) , ("arc" <$$> a)]
   pars (GridSOP {..}) = catMaybes [ "type" <$$> _gridPrimitive
                                   , "rows" <$$> _gridRows
@@ -830,6 +833,7 @@ instance Op SOP where
   pars (TransformSOP {..}) = catMaybes ["scale" <$$> _transformSUniformScale]
                              ++ vec3Map' "t" _transformSTranslate ++ vec3Map' "s" _transformSScale
   pars _ = []
+  opType (BoxSOP {}) = "boxSop"
   opType (CHOPToSOP {}) = "chopToSop"
   opType (CircleSOP {}) = "circleSop"
   opType (GridSOP {}) = "gridSop"
@@ -1164,6 +1168,9 @@ wireframeM :: Tree MAT
 wireframeM = N $ WireframeMAT
 
 -- SOPs
+
+boxS' :: (SOP -> SOP) -> Tree SOP
+boxS' f = N . f $ BoxSOP emptyV3
 
 circleS' :: (SOP -> SOP) -> Tree SOP
 circleS' f = N . f $ CircleSOP Nothing Nothing []
