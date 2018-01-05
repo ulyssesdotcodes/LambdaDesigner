@@ -14,18 +14,20 @@ import qualified Data.ByteString.Char8 as BS
 go =
   let
     ain = math' (mathMult ?~ float 10) [audioIn]
-    sgeo = instanceGeo' ((geoMat ?~ wireframeM)) poses (outS $ boxS' ((boxSScale._1 ?~ float 2) . (boxSScale._2 ?~ float 0.5)))
-    instances = int 40
-    poses = mergeC' (mergeCAlign ?~ int 7) [ty, tz]
-    ty = waveC' (waveCNames ?~ str "ty") instances $ ((castf sampleIndex !* float (0.5)) !- float 3.5) !+ (seconds !* (float (-0.5)) !% float 1)
-    tz = waveC' (waveCNames ?~ str "tz") instances $ (castf sampleIndex !* float (-1)) !+ (seconds !% float 2)
+    sgeo = instanceGeo' ((geoMat ?~ wireframeM) . (geoUniformScale ?~ float 0.1)) poses (outS $ torus' ((torusOrientation ?~ int 2) . (torusRows ?~ int 3) . (torusColumns ?~ int 3)))
+    instances = casti $ float 200 !* mchan "s2"
+    poses = mergeC' (mergeCAlign ?~ int 7) [ty, tx, tz]
+    instanceIter n = (castf sampleIndex !+ (seconds !* float n) !% castf instances)
+    tx = waveC' (waveCNames ?~ str "tx") instances $ ocos (castf sampleIndex !* float 60 !+ instanceIter 0.2) !* ((instanceIter 10 !* float 0.1) !+ float 4)
+    ty = waveC' (waveCNames ?~ str "ty") instances $ osin (castf sampleIndex !* float 60 !+ instanceIter 0.2) !* ((instanceIter 10 !* float 0.1) !+ float 4)
+    tz = waveC' (waveCNames ?~ str "tz") instances $ instanceIter 10 !* float 1 !- float 50
     centerCam t r = cam' ((camTranslate .~ t) . (camPivot .~ v3mult (float (-1)) t) . (camRotate .~ r))
     grender = render sgeo (centerCam (v3 (float 0) (float 0) (float 5)) emptyV3)
     volume = analyze (int 6) ain
     volc = chan0f volume
   in
     do r <- newIORef mempty
-       run r [outT $ grender]
+       run r [outT $ grender & fade (float 0.95)]
 
 fade' f l o t = feedbackT t (\t' -> l $ compT 0 [t, levelT' (levelOpacity ?~ o) t']) f
 fade = fade' id id

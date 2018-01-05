@@ -247,8 +247,13 @@ data SOP = BoxSOP { _boxSScale :: Vec3
          | Sphere  { _sphereType :: Maybe (Tree Int)
                    , _sopIns :: [Tree SOP]
                    }
-         | Sweep { _sopIns :: [Tree SOP]
-                 }
+         | Torus  { _torusType :: Maybe (Tree Int)
+                  , _torusRows :: Maybe (Tree Int)
+                  , _torusColumns :: Maybe(Tree Int)
+                  , _torusOrientation :: Maybe (Tree Int)
+                  , _torusRadius :: Vec2
+                  , _sopIns :: [Tree SOP]
+                  }
          | TransformSOP { _transformSUniformScale :: Maybe (Tree Float)
                         , _transformSScale :: Vec3
                         , _transformSTranslate :: Vec3
@@ -489,6 +494,10 @@ ceil = pyMathOp "ceil"
 osin :: (Num n) => Tree n -> Tree n
 osin = pyMathOp "sin"
 osin' = (!* float 0.5) . (!+ float 1) . osin
+
+ocos :: (Num n) => Tree n -> Tree n
+ocos = pyMathOp "cos"
+ocos' = (!* float 0.5) . (!+ float 1) . ocos
 
 pmax :: (Num n) => Tree n -> Tree n -> Tree n
 pmax = Mod2 (\s t -> BS.concat ["max(", s, ", ", t, ")"])
@@ -828,6 +837,9 @@ instance Op SOP where
                                                                        , ("mapping" <$$> _chopToSResample)
                                                                        ])
   pars (Sphere p _) = catMaybes [ ("type" <$$> p) ]
+  pars (Torus {..}) = mconcat [ catMaybes ["type" <$$> _torusType, "orient" <$$> _torusOrientation, "rows" <$$> _torusRows, "cols" <$$> _torusColumns]
+                                 , vec2Map' "rad" _torusRadius
+                                 ]
   pars (Metaball {..}) = vec3Map' "rad" _metaballRadius ++ vec3Map' "t" _metaballCenter
   pars (NoiseSOP t _) = vec3Map' "t" t
   pars (TransformSOP {..}) = catMaybes ["scale" <$$> _transformSUniformScale]
@@ -844,7 +856,7 @@ instance Op SOP where
   opType (NoiseSOP {}) = "noiseSop"
   opType (OutSOP {}) = "outSop"
   opType (Sphere {}) = "sphere"
-  opType (Sweep {}) = "sweep"
+  opType (Torus {}) = "torusSop"
   opType (TransformSOP {}) = "transformSop"
   connections (maybeToList . flip (^?) sopIns -> cs) = mconcat cs
 
@@ -1172,6 +1184,10 @@ wireframeM = N $ WireframeMAT
 boxS' :: (SOP -> SOP) -> Tree SOP
 boxS' f = N . f $ BoxSOP emptyV3
 
+chopToS' :: (SOP -> SOP) -> Tree CHOP -> Maybe (Tree SOP) -> Tree SOP
+chopToS' f c i = N . f $ CHOPToSOP c Nothing Nothing Nothing (maybeToList i)
+chopToS = chopToS' id
+
 circleS' :: (SOP -> SOP) -> Tree SOP
 circleS' f = N . f $ CircleSOP Nothing Nothing []
 circleS = circleS' id
@@ -1193,26 +1209,23 @@ noiseS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
 noiseS' f = N <$> f . NoiseSOP emptyV3 . (:[])
 noiseS = noiseS' id
 
+outS :: Tree SOP -> Tree SOP
+outS = N <$> OutSOP . (:[])
+
+scaleS :: Tree Float -> Tree SOP -> Tree SOP
+scaleS f s = transformS' (transformSUniformScale ?~ f) s
+
 sphere' :: (SOP -> SOP) -> Tree SOP
 sphere' f = N . f $ Sphere Nothing []
 sphere = sphere' id
 
-sweep :: Tree SOP -> Tree SOP -> Tree SOP
-sweep cross back = N $ Sweep [cross, back]
-
-outS :: Tree SOP -> Tree SOP
-outS = N <$> OutSOP . (:[])
-
-chopToS' :: (SOP -> SOP) -> Tree CHOP -> Maybe (Tree SOP) -> Tree SOP
-chopToS' f c i = N . f $ CHOPToSOP c Nothing Nothing Nothing (maybeToList i)
-chopToS = chopToS' id
+torus' :: (SOP -> SOP) -> Tree SOP
+torus' f = N . f $ Torus Nothing Nothing Nothing Nothing emptyV2 []
+torus = torus' id
 
 transformS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
 transformS' f = N <$> f . (TransformSOP Nothing emptyV3 emptyV3) . (:[])
 transformS = transformS' id
-
-scaleS :: Tree Float -> Tree SOP -> Tree SOP
-scaleS f s = transformS' (transformSUniformScale ?~ f) s
 
 -- TOPs
 
