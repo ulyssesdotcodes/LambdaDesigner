@@ -13,27 +13,26 @@ import qualified Data.ByteString.Char8 as BS
 
 go =
   let
-    ain = math' (mathMult ?~ float 10) [audioIn]
-    sgeo = instanceGeo' ((geoMat ?~ wireframeM) . (geoUniformScale ?~ float 0.1)) poses (outS $ torus' ((torusOrientation ?~ int 2) . (torusRows ?~ int 3) . (torusColumns ?~ int 3)))
-    instances = casti $ float 200 !* mchan "s2"
-    poses = mergeC' (mergeCAlign ?~ int 7) [ty, tx, tz]
-    instanceIter n = (castf sampleIndex !+ (seconds !* float n) !% castf instances)
-    tx = waveC' (waveCNames ?~ str "tx") instances $ ocos (castf sampleIndex !* float 60 !+ instanceIter 0.2) !* ((instanceIter 10 !* float 0.1) !+ float 4)
-    ty = waveC' (waveCNames ?~ str "ty") instances $ osin (castf sampleIndex !* float 60 !+ instanceIter 0.2) !* ((instanceIter 10 !* float 0.1) !+ float 4)
-    tz = waveC' (waveCNames ?~ str "tz") instances $ instanceIter 10 !* float 1 !- float 50
-    centerCam t r = cam' ((camTranslate .~ t) . (camPivot .~ v3mult (float (-1)) t) . (camRotate .~ r))
-    grender = render sgeo (centerCam (v3 (float 0) (float 0) (float 5)) emptyV3)
-    volume = analyze (int 6) ain
-    volc = chan0f volume
+    tsneoutput = tableF "../tsneoutput.txt"
+                 & scriptD "scripts/distance_dat.py" . (:[tsnepos])
+                 & datToC' (datToChopFirstColumn ?~ int 2)
+                 & expressionC [(PyExpr "max(0, sorted(map(float, me.inputs[0].chans()))[-4] - me.inputVal)")] . (:[])
+                 & expressionC [(PyExpr "math.sqrt((max(map(float, me.inputs[0].chans())) - me.inputVal) % max(map(float, me.inputs[0].chans())))")] . (:[])
+                 & expressionC [(PyExpr "me.inputVal / sum(map(float, me.inputs[0].chans()))")] . (:[])
+    tsnedata = tableF "../tsnedata.txt" & datToC
+    tsnepos = chopToD $ expressionC [PyExpr "me.inputVal * (max(me.inputs[0][me.chanIndex].vals) - min(me.inputs[0][me.chanIndex].vals)) + min(me.inputs[0][me.chanIndex].vals)"] [constC [float 0.8, float 0.8]]
+    merged = expressionC [(PyExpr "me.inputs[1][me.chanIndex] * me.inputVal")] [tsnedata, tsneoutput]
+             & math' (mathCombChans ?~ int 1) . (:[])
+             & shuffleC (int 1)
   in
     do r <- newIORef mempty
-       run r [outT $ grender & fade (float 0.95)]
+       run r [outC $ merged]
 
 fade' f l o t = feedbackT t (\t' -> l $ compT 0 [t, levelT' (levelOpacity ?~ o) t']) f
 fade = fade' id id
 
 data Palette = Palette [BS.ByteString]
-palette (Palette colors) t (w, h) = ramp' ((topResolution .~ iv2 (w, h)) . (rampType ?~ int t)) . scriptD (scr "Visuals/palette_mapper.py") . table . transpose
+palette (Palette colors) t (w, h) = ramp' ((topResolution .~ iv2 (w, h)) . (rampType ?~ int t)) . scriptD (scr "Visuals/palette_mapper.py") . (:[]) . table . transpose
   $ fromLists [colors]
 translate' f t = transformT' ((transformExtend ?~ int 3) . (transformTranslate .~ t) . f)
 

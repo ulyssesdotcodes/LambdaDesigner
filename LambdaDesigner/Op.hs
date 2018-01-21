@@ -1,5 +1,5 @@
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -71,6 +71,9 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _countLimMax :: Maybe (Tree Float)
                   , _countResetCondition :: Maybe (Tree Int)
                   }
+          | DATToCHOP { _datToChopFirstColumn :: Maybe (Tree Int)
+                      , _datToChopDat :: Tree DAT
+                      }
           | Delay { _delayFrames :: Tree Int
                   , _chopIns :: [Tree CHOP]
                   }
@@ -97,6 +100,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                  , _mathAddPost :: Maybe (Tree Float)
                  , _mathAlign :: Maybe (Tree Int)
                  , _mathCombChops :: Maybe (Tree Int)
+                 , _mathCombChans :: Maybe (Tree Int)
                  , _mathInt :: Maybe (Tree Int)
                  , _mathMult :: Maybe (Tree Float)
                  , _chopIns :: [Tree CHOP]
@@ -180,6 +184,8 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                     , _ceWhileOff :: Maybe BS.ByteString
                     , _ceValueChange :: Maybe BS.ByteString
                     }
+         | CHOPToDAT { _chopToDatChop :: Tree CHOP
+                     }
          | DatExec { _datExecDat :: Tree DAT
                    , _deTableChange :: Maybe BS.ByteString
                    , _datVars :: [(ByteString, Tree ByteString)]
@@ -203,7 +209,8 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                      , _selectDRExpr :: Maybe (Tree ByteString)
                      , _selectDat :: Tree DAT
                      }
-         | Table { _tableText :: Matrix ByteString
+         | Table { _tableText :: Maybe (Matrix ByteString)
+                 , _tableFile :: Maybe (Tree BS.ByteString)
                  }
          | TCPIPDAT { _tcpipMode :: Maybe (Tree Int)
                     , _tcpipCallbacks :: Tree DAT
@@ -623,6 +630,7 @@ instance Op CHOP where
                                   , "limitmax" <$$> _countLimMax
                                   , "resetcondition" <$$> _countResetCondition
                                   ] ++ chopBasePars n
+  pars n@(DATToCHOP {..}) = [("dat", ResolveP _datToChopDat)] ++ catMaybes ["firstcolumn" <$$> _datToChopFirstColumn] ++ chopBasePars n
   pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames)]
   pars n@(ExpressionCHOP {..}) = mconcat [ [("numexpr", Resolve . int $ L.length _expressionCExprs)]
                                          , chopBasePars n
@@ -637,6 +645,7 @@ instance Op CHOP where
   pars n@(Math {..}) = catMaybes [ "preoff" <$$> _mathAdd
                                  , "postoff" <$$> _mathAddPost
                                  , "chopop" <$$> _mathCombChops
+                                 , "chanop" <$$> _mathCombChans
                                  , "integer" <$$> _mathInt
                                  , "align" <$$> _mathAlign
                                  , "gain" <$$> _mathMult
@@ -709,6 +718,7 @@ instance Op CHOP where
   opType (AudioSpectrum {}) = "audioSpectrum"
   opType (ConstantCHOP {}) = "constantChop"
   opType (Count {}) = "count"
+  opType (DATToCHOP {}) = "datToChop"
   opType (Delay {}) = "delay"
   opType (ExpressionCHOP {}) = "expressionChop"
   opType (Fan {}) = "fan"
@@ -754,6 +764,7 @@ instance Op DAT where
                                                                                     , ("whileoff",) . Resolve . LambdaDesigner.Op.bool . const True <$> woff
                                                                                     , ("valuechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> vc
                                                                                     ])
+  pars (CHOPToDAT {..}) = [("chop", ResolveP _chopToDatChop)]
   pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> _deTableChange])
   pars n@(OscInDAT {..}) = ("port", _oscInDPort):(catMaybes ["splitbundle" <$$> _oscInDSplitBundle, "splitmessage" <$$> _oscInDSplitMessages, "bundletimestamp" <$$> _oscInDBundleTimestamp])
   pars (ScriptDAT {..}) = [("callbacks", ResolveP _scriptDatDat)]
@@ -772,9 +783,11 @@ instance Op DAT where
                             chooseType _ Nothing (Just _) (Just _) Nothing = 4
                             chooseType _ _ _ _ _ = 0
   pars (TextDAT {..}) = catMaybes [("file" <$$> _textFile)]
+  pars (Table {..}) = catMaybes [("file" <$$> _tableFile)]
   pars (TCPIPDAT m d f _) = ("callbacks", ResolveP d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
   pars _ = []
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
+  opType (CHOPToDAT {}) = "chopToDat"
   opType (DatExec {}) = "datExec"
   opType (InDAT {}) = "inDat"
   opType (OscInDAT {}) = "oscInDat"
@@ -782,9 +795,9 @@ instance Op DAT where
   opType (ScriptDAT {}) = "scriptDat"
   opType (SelectDAT {}) = "selectDat"
   opType (TextDAT {}) = "textDat"
-  opType (Table _) = "table"
+  opType (Table {}) = "table"
   opType (TCPIPDAT _ _ _ _) = "tcpip"
-  text (Table t) = Just . BS.intercalate ("\n") . fmap (BS.intercalate ("\t")) . toLists $ t
+  text (Table t _) = BS.intercalate ("\n") . fmap (BS.intercalate ("\t")) . toLists <$> t
   text (ChopExec _ offon won onoff woff vc) =
     Just . BS.intercalate "\n\n" . (traverse %~ concatFunc)
       $ catMaybes [ ("offToOn",) <$> offon
@@ -1026,6 +1039,10 @@ count' f t = N ins
     ins = def & chopIns %~ (flip (++) (catMaybes . maybeToList $ def ^? countReset))
 count = count' id
 
+datToC' :: (CHOP -> CHOP) -> Tree DAT -> Tree CHOP
+datToC' f = N . f <$> DATToCHOP Nothing
+datToC = datToC' id
+
 delay :: Tree Int -> Tree CHOP -> Tree CHOP
 delay f = N <$> Delay f . (:[])
 
@@ -1053,7 +1070,7 @@ logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
 
 math' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
-math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing
+math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 mergeC' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 mergeC' f = N . f <$> MergeCHOP Nothing Nothing
@@ -1082,6 +1099,9 @@ opaddf a = mathAdd .~ Just (float a)
 
 opmultf :: Float -> CHOP -> CHOP
 opmultf a = mathMult .~ Just (float a)
+
+outC :: Tree CHOP -> Tree CHOP
+outC = N <$> OutCHOP . (:[])
 
 renameC' :: (CHOP -> CHOP) -> Tree ByteString -> Tree CHOP -> Tree CHOP
 renameC' f newName = N . f <$> RenameCHOP newName Nothing . (:[])
@@ -1142,6 +1162,9 @@ cell (r, c) = Mod3 (\r' c' d -> BS.concat [d, "[", r', ",", c', "]"]) r c
 chopExec' :: (DAT -> DAT) -> Tree CHOP -> Tree DAT
 chopExec' f chop = N $ f $ ChopExec chop Nothing Nothing Nothing Nothing Nothing
 
+chopToD :: Tree CHOP -> Tree DAT
+chopToD c = N $ CHOPToDAT c
+
 datExec' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 datExec' f d = N $ f $ DatExec d Nothing []
 
@@ -1152,14 +1175,17 @@ fileD = fileD' id
 oscinD :: Int -> Tree DAT
 oscinD p = N $ OscInDAT (Resolve $ int p) (Just $ bool True) (Just $ bool True) (Just $ bool True)
 
-scriptD :: String -> Tree DAT -> Tree DAT
-scriptD file = N <$> ScriptDAT (fileD file) . (:[])
+scriptD :: String -> [Tree DAT] -> Tree DAT
+scriptD file = N <$> ScriptDAT (fileD file)
 
 selectD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 selectD' f t = N . f $ SelectDAT Nothing Nothing Nothing Nothing Nothing Nothing t
 
 table :: Matrix BS.ByteString -> Tree DAT
-table = N <$> Table
+table t = N $ Table (Just t) Nothing
+
+tableF :: String -> Tree DAT
+tableF f = N $ Table Nothing (Just $ str f)
 
 tcpipD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 tcpipD' f d = N . f $ TCPIPDAT Nothing d Nothing []
