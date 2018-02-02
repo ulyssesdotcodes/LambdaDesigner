@@ -163,6 +163,8 @@ parseTree pre (Mod3 f ta tb tc) = do aaddr <- parseParam ta
                                      caddr <- parseParam tc
                                      return $ f aaddr baddr caddr
 parseTree pre (Resolve r) = parseTree pre r
+parseTree pre (ResolvePS l) = do ps <- sequence $ parseParam . ResolveP <$> l
+                                 return $ BS.concat ["[", BS.intercalate "," ps, "]"]
 parseTree pre (ResolveP r) = parseParam r
 
 parseCommand :: (Monad m) => BS.ByteString -> CommandType -> StateT Messages m Messagable

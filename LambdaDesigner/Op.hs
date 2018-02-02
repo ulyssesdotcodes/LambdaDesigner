@@ -266,6 +266,9 @@ data SOP = BoxSOP { _boxSScale :: Vec3
                         , _transformSTranslate :: Vec3
                         , _sopIns :: [Tree SOP]
                         }
+         | TubeSOP { _tubeRadius :: Vec2
+                   , _tubeHeight :: Maybe (Tree Float)
+                   }
 
 data TOP = Blur { _blurSize :: Tree Float
                 , _topIns :: [Tree TOP]
@@ -340,9 +343,9 @@ data TOP = Blur { _blurSize :: Tree Float
                        , _rectangleBorderWidth :: Maybe (Tree Float)
                        , _topResolution :: IVec2
                        }
-           | Render { _renderGeo :: Tree Geo
+           | Render { _renderGeos :: [Tree Geo]
                    , _renderCamera :: Tree Camera
-                   , _renderLight :: Maybe (Tree Light)
+                   , _renderLight :: [Tree Light]
                    }
            | SelectTOP { _selectTTop :: Maybe (Tree TOP)
                        }
@@ -371,14 +374,21 @@ data MAT = ConstantMAT { _constColor :: Vec3
                        , _constMatMap :: Maybe (Tree TOP)
                        }
          | InMAT
-         | WireframeMAT
+         | WireframeMAT { _wireframeColor :: Vec3
+                        }
          | OutMAT { _matIns :: [Tree MAT]
+                  }
+         | PBRMAT { _pbrBaseColorMap :: Maybe (Tree TOP)
+                  , _pbrMetallic :: Maybe (Tree Float)
+                  , _pbrRoughness :: Maybe (Tree Float)
+                  , _pbrEmitColorMap :: Maybe (Tree TOP)
                   }
 
 data Geo = Geo { _geoTranslate :: Vec3
                 , _geoScale :: Vec3
                 , _geoMat :: Maybe (Tree MAT)
                 , _geoUniformScale :: Maybe (Tree Float)
+                , _geoRender :: Maybe (Tree Bool)
                 , _geoInstanceChop :: Maybe (Tree CHOP)
                 , _geoInstanceTX :: Maybe (Tree ByteString)
                 , _geoInstanceTY :: Maybe (Tree ByteString)
@@ -401,6 +411,13 @@ data BaseCOMP = BaseCOMP { _baseParams :: [(ByteString, Tree ByteString)]
                          }
 
 data Light = Light { _lightShadowType :: Maybe (Tree Int)
+                   , _lightTranslate :: Vec3
+                   , _lightColor :: Vec3
+                   , _lightDimmer :: Maybe (Tree Float)
+                   , _lightAttenuated :: Maybe (Tree Bool)
+                   , _lightAttenuationStart :: Maybe (Tree Float)
+                   , _lightAttenuationEnd :: Maybe (Tree Float)
+                   , _lightAttenuationRolloff :: Maybe (Tree Float)
                    }
 
 data Channel
@@ -419,6 +436,7 @@ data Tree a where
   Mod3 :: (ByteString -> ByteString -> ByteString -> ByteString) -> Tree a -> Tree b -> Tree c -> Tree d
   Resolve :: Tree a -> Tree ByteString
   ResolveP :: Tree a -> Tree ByteString
+  ResolvePS :: [Tree a] -> Tree ByteString
 
 float :: Float -> Tree Float
 float = PyExpr . pack . show
@@ -465,6 +483,19 @@ caststr = Mod (\s -> BS.concat ["str(", s, ")"])
 (!==) :: Tree a -> Tree a -> Tree Bool
 (!==) = Mod2 (\a b -> BS.concat ["(", a, "==", b, ")"])
 
+(!>) :: Tree a -> Tree a -> Tree Bool
+(!>) = Mod2 (\a b -> BS.concat ["(", a, ">", b, ")"])
+
+(!>=) :: Tree a -> Tree a -> Tree Bool
+(!>=) = Mod2 (\a b -> BS.concat ["(", a, ">=", b, ")"])
+
+(!<) :: Tree a -> Tree a -> Tree Bool
+(!<) = Mod2 (\a b -> BS.concat ["(", a, "<", b, ")"])
+
+(!<=) :: Tree a -> Tree a -> Tree Bool
+(!<=) = Mod2 (\a b -> BS.concat ["(", a, "<=", b, ")"])
+
+
 ternary :: Tree Bool -> Tree a -> Tree a -> Tree a
 ternary = Mod3 (\a b c -> BS.concat [b, " if ", a, " else ", c])
 
@@ -487,7 +518,7 @@ input :: (Op a) => Tree Int -> Tree a
 input = Mod (\i -> BS.concat ["me.inputs[", i, "]"])
 
 scycle :: Float -> Float -> Tree Float
-scycle a b =float b !* ((float a !* seconds) !% float 1)
+scycle a b = float b !* ((float a !* seconds) !% float 1)
 
 sincycle :: Float -> Float -> Tree Float
 sincycle a b =float b !* ((osin' $ float a !* seconds) !% float 1)
@@ -825,12 +856,14 @@ instance Op MAT where
   pars (ConstantMAT rgb alpha cmap) = catMaybes [("alpha" <$$> alpha), ("colormap",) . ResolveP <$> cmap]
     ++ rgbMap "color" rgb
   pars InMAT = []
-  pars WireframeMAT = []
+  pars WireframeMAT {..}= rgbMap "color" _wireframeColor
+  pars PBRMAT {..}= catMaybes [("basecolormap",) . ResolveP <$> _pbrBaseColorMap, "metallic" <$$> _pbrMetallic, "roughness" <$$> _pbrRoughness, ("emitmap",) . ResolveP <$> _pbrEmitColorMap] ++ fromMaybe [] ((\_ -> rgbMap "emit" (v3 (float 1) (float 1) (float 1))) <$> _pbrEmitColorMap)
   pars (OutMAT _) = []
   opType (ConstantMAT {}) = "constMat"
   opType InMAT = "inMat"
-  opType WireframeMAT = "wireframeMat"
+  opType WireframeMAT {} = "wireframeMat"
   opType (OutMAT _) = "outMat"
+  opType (PBRMAT {}) = "pbrMat"
   connections (maybeToList . flip (^?) matIns -> cs) = mconcat cs
 
 instance Baseable MAT where
@@ -857,6 +890,7 @@ instance Op SOP where
   pars (NoiseSOP t _) = vec3Map' "t" t
   pars (TransformSOP {..}) = catMaybes ["scale" <$$> _transformSUniformScale]
                              ++ vec3Map' "t" _transformSTranslate ++ vec3Map' "s" _transformSScale
+  pars (TubeSOP {..}) = catMaybes ["height" <$$> _tubeHeight] ++ vec2Map ("1", "2") "rad" _tubeRadius
   pars _ = []
   opType (BoxSOP {}) = "boxSop"
   opType (CHOPToSOP {}) = "chopToSop"
@@ -871,6 +905,7 @@ instance Op SOP where
   opType (Sphere {}) = "sphere"
   opType (Torus {}) = "torusSop"
   opType (TransformSOP {}) = "transformSop"
+  opType (TubeSOP {}) = "tubeSop"
   connections (maybeToList . flip (^?) sopIns -> cs) = mconcat cs
 
 instance Baseable SOP where
@@ -906,7 +941,7 @@ instance Op TOP where
                                 rgbMap "fillcolor" _rectangleColor ++
                                 rgbMap "border" _rectangleBorderColor ++
                                 catMaybes [ "borderwidth" <$$> _rectangleBorderWidth ] ++ topBasePars t
-  pars (Render {..}) =  [("geometry", ResolveP _renderGeo), ("camera", ResolveP _renderCamera)] ++ maybeToList (("lights",) . ResolveP <$> _renderLight)
+  pars (Render {..}) =  [("geometry", ResolvePS _renderGeos), ("camera", ResolveP _renderCamera), ("lights", ResolvePS _renderLight)]
   pars (SelectTOP c) = catMaybes [("top",) . ResolveP <$> c]
   pars t@(TextTOP {..}) = [("text", _textText)]
     ++ rgbMap "fontcolor" _textColor
@@ -969,6 +1004,7 @@ instance Op Geo where
   opType (Geo {}) = "geo"
   pars (Geo {..}) = mconcat [ catMaybes [ ("material",) . ResolveP <$> _geoMat
                                         , ("scale" <$$> _geoUniformScale)
+                                        , "render" <$$> _geoRender
                                         , "instancetx" <$$> _geoInstanceTX
                                         , "instancety" <$$> _geoInstanceTY
                                         , "instancetz" <$$> _geoInstanceTZ
@@ -989,7 +1025,13 @@ instance Op Camera where
   pars (Camera {..}) = vec3Map' "t" _camTranslate ++ vec3Map' "r" _camRotate ++ vec3Map' "p" _camPivot
 
 instance Op Light where
-  pars (Light {..}) = catMaybes ["shadowtype" <$$> _lightShadowType]
+  pars (Light {..}) = catMaybes [ "shadowtype" <$$> _lightShadowType
+                                , "dimmer" <$$> _lightDimmer
+                                , "attenuated" <$$> _lightAttenuated
+                                , "attenuationstart" <$$> _lightAttenuationStart
+                                , "attenuationend" <$$> _lightAttenuationEnd
+                                , "attenuationrolloff" <$$> _lightAttenuationRolloff
+                                ] ++ rgbMap "c" _lightColor ++ vec3Map' "t" _lightTranslate
   opType Light {} = "light"
 
 instance Op BaseCOMP where
@@ -1202,8 +1244,13 @@ constM' f = N . f $ ConstantMAT emptyV3 Nothing Nothing
 topM :: Tree TOP -> Tree MAT
 topM t = constM' (constMatMap ?~ t)
 
-wireframeM :: Tree MAT
-wireframeM = N $ WireframeMAT
+wireframeM' :: (MAT -> MAT) -> Tree MAT
+wireframeM' f = N . f $ WireframeMAT emptyV3
+wireframeM = wireframeM' id
+
+pbrM' :: (MAT -> MAT) -> Tree MAT
+pbrM' f = N . f $ PBRMAT Nothing Nothing Nothing Nothing
+
 
 -- SOPs
 
@@ -1252,6 +1299,9 @@ torus = torus' id
 transformS' :: (SOP -> SOP) -> Tree SOP -> Tree SOP
 transformS' f = N <$> f . (TransformSOP Nothing emptyV3 emptyV3) . (:[])
 transformS = transformS' id
+
+tubeS' :: (SOP -> SOP) -> Tree SOP
+tubeS' f = N . f $ TubeSOP emptyV2 Nothing
 
 -- TOPs
 
@@ -1329,8 +1379,8 @@ rectangle' f size = N . f $ RectangleTOP size emptyV2 emptyV3 emptyV3 Nothing em
 rectangle = rectangle' id
 
 render = render' id
-render' :: (TOP -> TOP) -> Tree Geo -> Tree Camera -> Tree TOP
-render' f geo cam = N . f $ Render geo cam Nothing
+render' :: (TOP -> TOP) -> [Tree Geo] -> Tree Camera -> Tree TOP
+render' f geos cam = N . f $ Render geos cam []
 
 selectT :: Tree TOP -> Tree TOP
 selectT = N <$> SelectTOP . Just
@@ -1354,7 +1404,7 @@ vidIn = N $ VideoDeviceIn
 -- COMPs
 
 geo' :: (Geo -> Geo) -> Tree SOP -> Tree Geo
-geo' f = Comp (f $ Geo emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)
+geo' f = Comp (f $ Geo emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing)
 
 instanceGeo' :: (Geo -> Geo) -> Tree CHOP -> Tree SOP -> Tree Geo
 instanceGeo' f c = geo' (f
@@ -1368,7 +1418,7 @@ cam' f = N . f $ Camera emptyV3 emptyV3 emptyV3
 cam = cam' id
 
 light' :: (Light -> Light) -> Tree Light
-light' f = N . f $ Light Nothing
+light' f = N . f $ Light Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing
 light = light' id
 
 base :: (Baseable a, Baseable b) => (Tree a -> Tree b) -> Tree a -> Tree b
