@@ -12,34 +12,93 @@ import Data.Matrix
 import Data.Maybe
 import Data.List as L
 
+import Debug.Trace
+
+import qualified Data.Vector as V
 import qualified Data.ByteString.Char8 as BS
 
 go =
   let
-    step = 0.1
+    step = 0.2
     steps = [0, step .. 1]
-    ain = math' (mathMult ?~ float 1) [audioIn]
-    volume = chan0f $ analyze (int 6) ain
     band = chan0f . analyze (int 6) . flip bandPass ain
-    ltranslate f = float (f * 3) !- float 2
-    lightgeo f = geo' ((geoRender ?~ band (float f) !> float 0.05) . (geoTranslate._1 ?~ ltranslate f) . (geoUniformScale ?~ float (step * 0.5)) . (geoMat ?~ lmat (float f))) (outS $ tubeS' (tubeHeight ?~ float 10))
-    lrender = render' id (lightgeo <$> steps) cam & hsvT' (hsvAdjValMult ?~ float 1.3)
-    palettecolor = croppalette purplish
+    input = Input audioIn
+    ltranslate f = float (f * 1.2) !- float 0.6
+    lightgeo f ins = geo' ((geoTranslate._1 ?~ chanf (f * numattrs + pX) ins)
+                           . (geoTranslate._2 ?~ chanf (f * numattrs + pY) ins)
+                           . (geoTranslate._3 ?~ float 3)
+                           . (geoUniformScale ?~ float (step * 0.1))
+                           . (geoMat ?~ lmat (float $ fromIntegral f))
+                          ) (outS $ tubeS' (tubeHeight ?~ float 10))
+    lrender = render' id ((\f -> lightgeo f modlights) <$> [0..(numactors - 1)]) cam & hsvT' (hsvAdjValMult ?~ float 1.3)
+    palettecolor = croppalette buddhist
     chopcol l n = palettecolor (float l !+ (seconds !* float 0.3)) & topToC & chanf n
     lights l = light' ((lightColor .~ v3 (chopcol l 0) (chopcol l 1) (chopcol l 2))
                        . (lightTranslate._1 ?~ ltranslate l)
-                       . (lightDimmer ?~ float 16 !* castf (band (float l) !> float 0.05))
                        . (lightAttenuated ?~ bool True)
-                       . (lightAttenuationStart ?~ float 2)
-                       . (lightAttenuationEnd ?~ float 10.3)
-                       . (lightAttenuationRolloff ?~ float 0.4)
+                       . (lightAttenuationStart ?~ float 0)
+                       . (lightAttenuationEnd ?~ float 12)
+                       . (lightAttenuationRolloff ?~ float 2)
                       )
     lmat l = pbrM' (pbrEmitColorMap ?~ (palettecolor (l !+ (seconds !* float 0.3))))
-    wallgeo = geo' ((geoMat ?~ pbrM' ((pbrMetallic ?~ float 0) . (pbrBaseColorMap ?~ movieFileIn (str "C:/Users/ulyssesp/Downloads/concrete_bare_2159_2638_Small.jpg")))) . (geoUniformScale ?~ float 8) . (geoTranslate._3 ?~ float (-4))) $ outS $ boxS' id
+    wallgeo = geo' ((geoMat ?~ pbrM' ((pbrMetallic ?~ float 0) . (pbrBaseColorMap ?~ movieFileIn (str "C:/Users/ulyssesp/Downloads/concrete_bare_2159_2638_Small.jpg")))) . (geoUniformScale ?~ float 2) . (geoTranslate._3 ?~ float (3)) . (geoScale._2 ?~ float 0.5) . (geoScale._3 ?~ float 2)) $ outS $ boxS' id
     wallrender = render' (renderLight .~ (lights <$> steps)) [wallgeo] cam
   in
     do r <- newIORef mempty
-       run r [outT $ compT 31 [compT 31 [lrender, lrender & blur (float 32)], wallrender]]
+       run r [ outT $ compT 31 [compT 31 [lrender, lrender & blur (float 32)], wallrender] ]
+
+data Input = Input (Tree CHOP)
+data Behaviour = VolUp | GoDown | TopOut | StartX Float
+
+behaviours = [[VolUp, GoDown, TopOut], [StartX 0.2]]
+numactors = length behaviours
+
+replaceexprs :: [(Int, Tree Float)] -> (Tree CHOP -> Tree CHOP)
+replaceexprs rexp = expressionC (V.toList $ modinputs V.// rexp) . (:[])
+
+modlights = fix "feedbacks" $ feedbackC (mergeC $ zipWith ($) (zipWith (\i bs -> foldr (.) id $ behaviourInit i <$> bs) [0..] behaviours) $ (\i -> selLight i initLights) <$> [0..(numactors-1)]) id id
+
+                -- . expressionC (V.toList $ modinputs V.// (mconcat $
+                --                (\i -> [ (i * numattrs + pX, chanf (i * numattrs + pX) op0 !+ chanf (i * numattrs + vX) op0 )
+                --                       , (i * numattrs + pY, chanf (i * numattrs + pY) op0 !+ chanf (i * numattrs + vY) op0 )
+                --                       , (i * numattrs + vX, chanf (i * numattrs + vX) op0 !* float 0.99)
+                --                       , (i * numattrs + vY, chanf (i * numattrs + vY) op0 !* float 0.99)
+                --                       ]) <$> [0..(numactors - 1)])
+                --               ) . (:[]))
+
+selLight i = deleteCNum' (deleteCNonScoped ?~ bool True) (str $ mconcat ["[", show (i * numattrs), "-", show ((i + 1) * numattrs - 1),"]"])
+
+replacechans :: [(Int, Tree CHOP -> Tree CHOP)] -> (Tree CHOP -> Tree CHOP)
+replacechans rexp = (\ins -> replaceC [ins, mergeC . (fmap ($ ins)) $ (\(i, e) -> e . selectCConnect' (selectCNames ?~ PyExpr (BS.concat $ ["me.inputs[0][", BS.pack $ show i, "].name"]))) <$> rexp])
+
+bindex i ch = i * numattrs + ch
+bchan i ch = chanf (bindex i ch) modlights
+
+behaviourOp :: Int -> Behaviour -> (Tree CHOP -> Tree CHOP)
+behaviourOp i VolUp = replacechans [ (bindex i vY, math' (mathAdd .~ Just (volume !* float 0.02)) . (:[])) ]
+behaviourOp i GoDown = replacechans [ (bindex i vY, replaceexprs [(0, ternary (bchan i pY !> float (-0.2)) (bchan 0 0 !- float 0.008) (float 0))])]
+behaviourOp i TopOut = replacechans [ (bindex i vY, replaceexprs [(0, ternary (bchan i pY !> float (-0.2)) (bchan 0 0 !- float 0.008) (float 0))])]
+behaviourOp i _ = id
+
+behaviourInit :: Int -> Behaviour -> (Tree CHOP -> Tree CHOP)
+behaviourInit i (StartX x) = replaceexprs [ (2, float x) ]
+behaviourInit i _ = id
+
+ain = math' (mathMult ?~ float 1) [audioIn]
+volume = chan0f $ analyze (int 6) ain
+
+op0 = opInput (int 0)
+vX = 0
+vY = 1
+pX = 2
+pY = 3
+numattrs = 4
+initLight = constC $ replicate numattrs (float 0)
+initLights = mergeC $ replicate numactors initLight
+modinputs = V.fromList $ flip chanf op0 <$> [0..(numattrs * numactors)]
+
+band :: Tree CHOP -> Tree Float -> Tree Float
+band ain = chan0f . analyze (int 6) . flip bandPass ain
 
 fade' f l o t = feedbackT t (\t' -> l $ compT 0 [t, levelT' (levelOpacity ?~ o) t']) f
 fade = fade' id id

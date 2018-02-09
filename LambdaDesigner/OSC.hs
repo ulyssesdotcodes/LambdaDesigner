@@ -125,9 +125,9 @@ parseTree pre (Tox p mf) = do addr <- opsMessages pre p
                                 Nothing -> return addr
 parseTree pre (FC fpars reset loop sel) = do faddr <- parseTree pre $ N $ fpars & chopIns .~ [reset]
                                              let fname = BS.tail faddr
-                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ N $ SelectCHOP Nothing Nothing)
+                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ N $ SelectCHOP Nothing Nothing [])
                                              let lname = BS.tail laddr
-                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ N (SelectCHOP Nothing $ Just $ fix lname $ N $ SelectCHOP Nothing Nothing)
+                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ N (SelectCHOP Nothing (Just $ fix lname $ N $ SelectCHOP Nothing Nothing []) [])
                                              let sname = BS.tail saddr
                                              modify $ T.adjust ((:) (RevConnect 0 faddr)) saddr
                                              removeDuplicates saddr

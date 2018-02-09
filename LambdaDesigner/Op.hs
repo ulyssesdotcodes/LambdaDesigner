@@ -77,6 +77,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | Delay { _delayFrames :: Tree Int
                   , _chopIns :: [Tree CHOP]
                   }
+          | DeleteCHOP { _deleteCNumbers :: Maybe (Tree ByteString)
+                       , _deleteCNonScoped :: Maybe (Tree Bool)
+                       , _chopIns :: [Tree CHOP]
+                       }
           | ExpressionCHOP { _expressionCExprs :: [Tree Float]
                            , _chopIns :: [Tree CHOP]
                            }
@@ -136,8 +140,12 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                          , _chopTimeSlice :: Maybe (Tree Bool)
                          , _chopIns :: [Tree CHOP]
                          }
+          | ScriptCHOP { _scriptChopDat :: Tree DAT
+                       , _chopIns :: [Tree CHOP]
+                       }
           | SelectCHOP { _selectCNames :: Maybe (Tree ByteString)
                        , _selectCChop :: Maybe (Tree CHOP)
+                       , _chopIns :: [Tree CHOP]
                        }
           | StretchCHOP { _stretchCEnd :: Tree Int
                         , _chopIns :: [Tree CHOP]
@@ -663,6 +671,10 @@ instance Op CHOP where
                                   ] ++ chopBasePars n
   pars n@(DATToCHOP {..}) = [("dat", ResolveP _datToChopDat)] ++ catMaybes ["firstcolumn" <$$> _datToChopFirstColumn] ++ chopBasePars n
   pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames)]
+  pars n@(DeleteCHOP {..}) = catMaybes [ "selnumbers" <$$> _deleteCNumbers
+                                       , ("select",) . Resolve . const (int 1) <$> _deleteCNumbers
+                                       , "discard" <$$> _deleteCNonScoped
+                                       ] ++ [("delchannels", Resolve (bool True))]
   pars n@(ExpressionCHOP {..}) = mconcat [ [("numexpr", Resolve . int $ L.length _expressionCExprs)]
                                          , chopBasePars n
                                          , L.zipWith (\i e -> (BS.concat ["expr", (pack . show) i], Resolve e)) [0..] _expressionCExprs
@@ -703,6 +715,7 @@ instance Op CHOP where
       catMaybes [ "rate" <$$> _resampleRate
                 , "end" <$$> _resampleEnd
                 ] ++ [ ("method", Resolve . int $ method _resampleRate _resampleEnd) ] ++ chopBasePars n
+  pars n@(ScriptCHOP {..}) = [("callbacks", ResolveP _scriptChopDat)]
   pars n@(SelectCHOP {..}) = catMaybes [(("chop",) . ResolveP <$> _selectCChop), "channames" <$$> _selectCNames] ++ chopBasePars n
   pars n@(ShuffleCHOP {..}) = [("method", Resolve _shuffleCMethod)] ++ chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
@@ -751,6 +764,7 @@ instance Op CHOP where
   opType (Count {}) = "count"
   opType (DATToCHOP {}) = "datToChop"
   opType (Delay {}) = "delay"
+  opType (DeleteCHOP {}) = "deleteChop"
   opType (ExpressionCHOP {}) = "expressionChop"
   opType (Fan {}) = "fan"
   opType (FeedbackCHOP _) = "feedbackChop"
@@ -770,6 +784,7 @@ instance Op CHOP where
   opType (RenameCHOP {}) = "renameChop"
   opType (ReplaceCHOP {}) = "replaceChop"
   opType (ResampleCHOP {}) = "resampleChop"
+  opType (ScriptCHOP {}) = "scriptChop"
   opType (SelectCHOP {}) = "selectChop"
   opType (ShuffleCHOP {}) = "shuffleChop"
   opType (SOPToCHOP _) = "sopToChop"
@@ -1088,6 +1103,9 @@ datToC = datToC' id
 delay :: Tree Int -> Tree CHOP -> Tree CHOP
 delay f = N <$> Delay f . (:[])
 
+deleteCNum' :: (CHOP -> CHOP) -> Tree ByteString -> Tree CHOP -> Tree CHOP
+deleteCNum' f d = N . f <$> DeleteCHOP (Just d) Nothing . (:[])
+
 expressionC :: [Tree Float] -> [Tree CHOP] -> Tree CHOP
 expressionC es is = N $ ExpressionCHOP es is
 
@@ -1155,15 +1173,21 @@ replaceC = N <$> ReplaceCHOP
 resampleC' :: (CHOP -> CHOP) -> Bool -> Tree CHOP -> Tree CHOP
 resampleC' f tc = N . f <$> ResampleCHOP Nothing Nothing (Just $ bool tc) . (:[])
 
-sopToC :: Tree SOP -> Tree CHOP
-sopToC = N <$> SOPToCHOP
+scriptC :: String -> [Tree CHOP] -> Tree CHOP
+scriptC file = N <$> ScriptCHOP (fileD file)
 
 selectC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
-selectC' f = N . f <$> SelectCHOP Nothing . Just
+selectC' f c = N . f $ SelectCHOP Nothing (Just c) []
 selectC = selectC' id
+
+selectCConnect' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
+selectCConnect' f = N . f <$> SelectCHOP Nothing Nothing . (:[])
 
 shuffleC :: Tree Int -> Tree CHOP -> Tree CHOP
 shuffleC s = N <$> ShuffleCHOP s . (:[])
+
+sopToC :: Tree SOP -> Tree CHOP
+sopToC = N <$> SOPToCHOP
 
 stretchC :: Tree Int -> Tree CHOP -> Tree CHOP
 stretchC i = N <$> StretchCHOP i . (:[])
