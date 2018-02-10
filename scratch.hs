@@ -19,52 +19,56 @@ import qualified Data.ByteString.Char8 as BS
 
 go =
   let
-    step = 0.2
-    steps = [0, step .. 1]
     band = chan0f . analyze (int 6) . flip bandPass ain
     input = Input audioIn
     ltranslate f = float (f * 1.2) !- float 0.6
-    lightgeo f ins = geo' ((geoTranslate._1 ?~ chanf (f * numattrs + pX) ins)
-                           . (geoTranslate._2 ?~ chanf (f * numattrs + pY) ins)
-                           . (geoTranslate._3 ?~ float 3)
-                           . (geoUniformScale ?~ float (step * 0.1))
+    lightgeo f ins = geo' ((geoTranslate .~ v3 (bchan f pX ins) (bchan f pY ins) (bchan f pZ ins))
+                           . (geoTranslate._3 ?~ float 0)
+                           . (geoUniformScale ?~ float (0.02))
                            . (geoMat ?~ lmat (float $ fromIntegral f))
                           ) (outS $ tubeS' (tubeHeight ?~ float 10))
-    lrender = render' id ((\f -> lightgeo f modlights) <$> [0..(numactors - 1)]) cam & hsvT' (hsvAdjValMult ?~ float 1.3)
+    lrender = render' id ((\f -> lightgeo f modlights) <$> [0..(numactors - 1)]) rendercam & hsvT' (hsvAdjValMult ?~ float 1.3)
     palettecolor = croppalette buddhist
     chopcol l n = palettecolor (float l !+ (seconds !* float 0.3)) & topToC & chanf n
-    lights l = light' ((lightColor .~ v3 (chopcol l 0) (chopcol l 1) (chopcol l 2))
-                       . (lightTranslate._1 ?~ ltranslate l)
-                       . (lightAttenuated ?~ bool True)
-                       . (lightAttenuationStart ?~ float 0)
-                       . (lightAttenuationEnd ?~ float 12)
-                       . (lightAttenuationRolloff ?~ float 2)
-                      )
+    lights ins l = light' ((lightColor .~ v3 (chopcol (fromIntegral l) 0) (chopcol (fromIntegral l) 1) (chopcol (fromIntegral l) 2))
+                          . (lightTranslate .~ v3 (bchan l pX ins) (bchan l pY ins) (bchan l pZ ins))
+                          . (lightAttenuated ?~ bool True)
+                          . (lightAttenuationStart ?~ float 0)
+                          . (lightAttenuationEnd ?~ float 3)
+                          . (lightAttenuationRolloff ?~ float 10)
+                          . (lightDimmer ?~ float 2)
+                          )
     lmat l = pbrM' (pbrEmitColorMap ?~ (palettecolor (l !+ (seconds !* float 0.3))))
-    wallgeo = geo' ((geoMat ?~ pbrM' ((pbrMetallic ?~ float 0) . (pbrBaseColorMap ?~ movieFileIn (str "C:/Users/ulyssesp/Downloads/concrete_bare_2159_2638_Small.jpg")))) . (geoUniformScale ?~ float 2) . (geoTranslate._3 ?~ float (3)) . (geoScale._2 ?~ float 0.5) . (geoScale._3 ?~ float 2)) $ outS $ boxS' id
-    wallrender = render' (renderLight .~ (lights <$> steps)) [wallgeo] cam
+    wallgeo = geo' ((geoMat ?~ pbrM' ((pbrMetallic ?~ float 0) . (pbrBaseColorMap ?~ movieFileIn (str "C:/Users/ulyssesp/Downloads/concrete_bare_2159_2638_Small.jpg")))) . (geoUniformScale ?~ float 2) . (geoScale._2 ?~ float 0.25) . (geoScale._3 ?~ float 1)) $ outS $ boxS' id
+    centerCam t r l = cam' ((camTranslate .~ t) . (camPivot .~ v3mult (float (-1)) t) . (camRotate .~ r) . (camLookAt ?~ l))
+    rendercam = centerCam (v3 (float 3) (float 2) (float 3)) emptyV3 wallgeo
+    wallrender = render' ((renderLight .~ (lights modlights <$> [0..(numactors - 1)])) . (renderCullFace ?~ int 2)) [wallgeo] rendercam
   in
     do r <- newIORef mempty
        run r [ outT $ compT 31 [compT 31 [lrender, lrender & blur (float 32)], wallrender] ]
 
 data Input = Input (Tree CHOP)
-data Behaviour = VolUp | GoDown | TopOut | StartX Float
+data Behaviour = Vol Int | Move Int | Clamp [(Int, Int, Float, Float)]| Start Int Float | BackAndForth Int Int
 
-behaviours = [[VolUp, GoDown, TopOut], [StartX 0.2]]
+lightclamp = Clamp [(pX, vX, -0.4, 0.4), (pY, vY, -0.2, 0.2), (pZ, vZ, -0.4, 0.4)]
+behaviours = [[Vol vY, Move vY, lightclamp], [Start pX 0.2, BackAndForth pZ vZ, lightclamp]]
 numactors = length behaviours
 
 replaceexprs :: [(Int, Tree Float)] -> (Tree CHOP -> Tree CHOP)
 replaceexprs rexp = expressionC (V.toList $ modinputs V.// rexp) . (:[])
 
-modlights = fix "feedbacks" $ feedbackC (mergeC $ zipWith ($) (zipWith (\i bs -> foldr (.) id $ behaviourInit i <$> bs) [0..] behaviours) $ (\i -> selLight i initLights) <$> [0..(numactors-1)]) id id
+modlights = feedbackC (mergeC $ zipWith ($) (zipWith (\i bs -> foldr (.) id $ behaviourInit i <$> bs) [0..] behaviours) $ (\i -> selLight i initLights) <$> [0..(numactors-1)]) id (\c -> mergeC $ zipWith ($) (zipWith (\i bs -> foldr (.) id $ posupdate:(behaviourOp i c <$> reverse bs)) [0..] behaviours) $ (\i -> selLight i c) <$> [0..(numactors-1)])
 
-                -- . expressionC (V.toList $ modinputs V.// (mconcat $
-                --                (\i -> [ (i * numattrs + pX, chanf (i * numattrs + pX) op0 !+ chanf (i * numattrs + vX) op0 )
-                --                       , (i * numattrs + pY, chanf (i * numattrs + pY) op0 !+ chanf (i * numattrs + vY) op0 )
-                --                       , (i * numattrs + vX, chanf (i * numattrs + vX) op0 !* float 0.99)
-                --                       , (i * numattrs + vY, chanf (i * numattrs + vY) op0 !* float 0.99)
-                --                       ]) <$> [0..(numactors - 1)])
-                --               ) . (:[]))
+
+posupdate = expressionC (V.toList $ modinputs V.// (mconcat $
+                          (\i -> [ (i * numattrs + pX, chanf (i * numattrs + pX) op0 !+ chanf (i * numattrs + vX) op0 )
+                                , (i * numattrs + pY, chanf (i * numattrs + pY) op0 !+ chanf (i * numattrs + vY) op0 )
+                                , (i * numattrs + pZ, chanf (i * numattrs + pZ) op0 !+ chanf (i * numattrs + vZ) op0 )
+                                , (i * numattrs + vX, chanf (i * numattrs + vX) op0 !* float 0.99)
+                                , (i * numattrs + vY, chanf (i * numattrs + vY) op0 !* float 0.99)
+                                , (i * numattrs + vZ, chanf (i * numattrs + vZ) op0 !* float 0.99)
+                                ]) <$> [0..(numactors - 1)])
+                        ) . (:[])
 
 selLight i = deleteCNum' (deleteCNonScoped ?~ bool True) (str $ mconcat ["[", show (i * numattrs), "-", show ((i + 1) * numattrs - 1),"]"])
 
@@ -72,16 +76,21 @@ replacechans :: [(Int, Tree CHOP -> Tree CHOP)] -> (Tree CHOP -> Tree CHOP)
 replacechans rexp = (\ins -> replaceC [ins, mergeC . (fmap ($ ins)) $ (\(i, e) -> e . selectCConnect' (selectCNames ?~ PyExpr (BS.concat $ ["me.inputs[0][", BS.pack $ show i, "].name"]))) <$> rexp])
 
 bindex i ch = i * numattrs + ch
-bchan i ch = chanf (bindex i ch) modlights
+bchan i ch = chanf (bindex i ch)
 
-behaviourOp :: Int -> Behaviour -> (Tree CHOP -> Tree CHOP)
-behaviourOp i VolUp = replacechans [ (bindex i vY, math' (mathAdd .~ Just (volume !* float 0.02)) . (:[])) ]
-behaviourOp i GoDown = replacechans [ (bindex i vY, replaceexprs [(0, ternary (bchan i pY !> float (-0.2)) (bchan 0 0 !- float 0.008) (float 0))])]
-behaviourOp i TopOut = replacechans [ (bindex i vY, replaceexprs [(0, ternary (bchan i pY !> float (-0.2)) (bchan 0 0 !- float 0.008) (float 0))])]
-behaviourOp i _ = id
+behaviourOp :: Int -> Tree CHOP -> Behaviour -> (Tree CHOP -> Tree CHOP)
+behaviourOp i ml (Vol c) = replacechans [ (c, math' (mathAdd .~ Just (volume !* float 1)) . (:[])) ]
+behaviourOp i ml (Move c) = replaceexprs [(c, chanf vY op0 !- float 0.008)]
+behaviourOp i ml (Clamp vs) = replaceexprs $ (\(i, vi, s, e) ->
+                                                 (vi, ternary ((chanf i op0 !< float s !&& (chanf vi op0 !< float 0)) !||
+                                                               (chanf i op0 !> float e !&& (chanf vi op0 !> float 0))
+                                                               ) (float 0) (chanf vi op0))) <$> vs
+behaviourOp i ml (BackAndForth c vc) = replaceexprs [(vc, ((ternary (chanf vc op0 !> float 0) (float 1) (float (-1))) !* volume !* float 0.05) !+
+                                                chanf vc op0 !+ (chanf c op0 !* float (-0.06)))]
+behaviourOp i _ _ = id
 
 behaviourInit :: Int -> Behaviour -> (Tree CHOP -> Tree CHOP)
-behaviourInit i (StartX x) = replaceexprs [ (2, float x) ]
+behaviourInit i (Start c x) = replaceexprs [ (c, float x) ]
 behaviourInit i _ = id
 
 ain = math' (mathMult ?~ float 1) [audioIn]
@@ -90,9 +99,11 @@ volume = chan0f $ analyze (int 6) ain
 op0 = opInput (int 0)
 vX = 0
 vY = 1
-pX = 2
-pY = 3
-numattrs = 4
+vZ = 2
+pX = 3
+pY = 4
+pZ = 5
+numattrs = 6
 initLight = constC $ replicate numattrs (float 0)
 initLights = mergeC $ replicate numactors initLight
 modinputs = V.fromList $ flip chanf op0 <$> [0..(numattrs * numactors)]
