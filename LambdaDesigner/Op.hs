@@ -121,6 +121,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                       , _noiseCType :: Maybe (Tree Int)
                       , _noiseCPeriod :: Maybe (Tree Float)
                       , _noiseCChannels :: Maybe (Tree ByteString)
+                      , _noiseCSeed :: Maybe (Tree Float)
                       }
           | NullCHOP { _nullCCookType :: Maybe (Tree Int)
                      , _chopIns :: [Tree CHOP]
@@ -354,6 +355,7 @@ data TOP = Blur { _blurSize :: Tree Float
            | Render { _renderGeos :: [Tree Geo]
                    , _renderCamera :: Tree Camera
                    , _renderLight :: [Tree Light]
+                   , _renderCullFace :: Maybe (Tree Int)
                    }
            | SelectTOP { _selectTTop :: Maybe (Tree TOP)
                        }
@@ -412,6 +414,7 @@ data Geo = Geo { _geoTranslate :: Vec3
 data Camera = Camera { _camTranslate :: Vec3
                      , _camRotate :: Vec3
                      , _camPivot :: Vec3
+                     , _camLookAt :: Maybe (Tree Geo)
                      }
 
 data BaseCOMP = BaseCOMP { _baseParams :: [(ByteString, Tree ByteString)]
@@ -503,9 +506,15 @@ caststr = Mod (\s -> BS.concat ["str(", s, ")"])
 (!<=) :: Tree a -> Tree a -> Tree Bool
 (!<=) = Mod2 (\a b -> BS.concat ["(", a, "<=", b, ")"])
 
+(!||) :: Tree Bool -> Tree Bool -> Tree Bool
+(!||) = Mod2 (\a b -> BS.concat ["(", a, ") or (", b, ")"])
+
+(!&&) :: Tree Bool -> Tree Bool -> Tree Bool
+(!&&) = Mod2 (\a b -> BS.concat ["(", a, ") and (", b, ")"])
+
 
 ternary :: Tree Bool -> Tree a -> Tree a -> Tree a
-ternary = Mod3 (\a b c -> BS.concat [b, " if ", a, " else ", c])
+ternary = Mod3 (\a b c -> BS.concat ["(", b, " if ", a, " else ", c, ")"])
 
 seconds :: Tree Float
 seconds = PyExpr "absTime.seconds"
@@ -700,6 +709,7 @@ instance Op CHOP where
                                       , "period" <$$> _noiseCPeriod
                                       , "amp" <$$> _noiseCAmplitude
                                       , ("channelname",) <$> _noiseCChannels
+                                      , "seed" <$$> _noiseCSeed
                                       ] ++ chopBasePars n ++ vec3Map' "t" _noiseCTranslate
   pars n@(NullCHOP {..}) = catMaybes [("cooktype" <$$> _nullCCookType)] ++ chopBasePars n
   pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
@@ -956,7 +966,10 @@ instance Op TOP where
                                 rgbMap "fillcolor" _rectangleColor ++
                                 rgbMap "border" _rectangleBorderColor ++
                                 catMaybes [ "borderwidth" <$$> _rectangleBorderWidth ] ++ topBasePars t
-  pars (Render {..}) =  [("geometry", ResolvePS _renderGeos), ("camera", ResolveP _renderCamera), ("lights", ResolvePS _renderLight)]
+  pars (Render {..}) =  [ ("geometry", ResolvePS _renderGeos)
+                        , ("camera", ResolveP _renderCamera)
+                        , ("lights", ResolvePS _renderLight)] ++
+                        catMaybes ["cullface" <$$> _renderCullFace]
   pars (SelectTOP c) = catMaybes [("top",) . ResolveP <$> c]
   pars t@(TextTOP {..}) = [("text", _textText)]
     ++ rgbMap "fontcolor" _textColor
@@ -1037,7 +1050,8 @@ instance Op Geo where
 
 instance Op Camera where
   opType (Camera {}) = "camera"
-  pars (Camera {..}) = vec3Map' "t" _camTranslate ++ vec3Map' "r" _camRotate ++ vec3Map' "p" _camPivot
+  pars (Camera {..}) = vec3Map' "t" _camTranslate ++ vec3Map' "r" _camRotate ++ vec3Map' "p" _camPivot ++
+    catMaybes [("lookat",) . ResolveP <$> _camLookAt]
 
 instance Op Light where
   pars (Light {..}) = catMaybes [ "shadowtype" <$$> _lightShadowType
@@ -1045,7 +1059,7 @@ instance Op Light where
                                 , "attenuated" <$$> _lightAttenuated
                                 , "attenuationstart" <$$> _lightAttenuationStart
                                 , "attenuationend" <$$> _lightAttenuationEnd
-                                , "attenuationrolloff" <$$> _lightAttenuationRolloff
+                                , "attenuationexp" <$$> _lightAttenuationRolloff
                                 ] ++ rgbMap "c" _lightColor ++ vec3Map' "t" _lightTranslate
   opType Light {} = "light"
 
@@ -1140,7 +1154,7 @@ mchan :: String -> Tree Float
 mchan s = chanNamef s $ N MidiIn
 
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
-noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing)
+noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing)
 noiseC = noiseC' id
 
 nullC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
@@ -1404,7 +1418,7 @@ rectangle = rectangle' id
 
 render = render' id
 render' :: (TOP -> TOP) -> [Tree Geo] -> Tree Camera -> Tree TOP
-render' f geos cam = N . f $ Render geos cam []
+render' f geos cam = N . f $ Render geos cam [] Nothing
 
 selectT :: Tree TOP -> Tree TOP
 selectT = N <$> SelectTOP . Just
@@ -1438,7 +1452,7 @@ instanceGeo' f c = geo' (f
                          . (geoInstanceChop ?~ c))
 
 cam' :: (Camera -> Camera) -> Tree Camera
-cam' f = N . f $ Camera emptyV3 emptyV3 emptyV3
+cam' f = N . f $ Camera emptyV3 emptyV3 emptyV3 Nothing
 cam = cam' id
 
 light' :: (Light -> Light) -> Tree Light
