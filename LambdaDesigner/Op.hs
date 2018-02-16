@@ -121,6 +121,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                       , _noiseCType :: Maybe (Tree Int)
                       , _noiseCPeriod :: Maybe (Tree Float)
                       , _noiseCChannels :: Maybe (Tree ByteString)
+                      , _noiseCSeed :: Maybe (Tree Float)
                       }
           | NullCHOP { _nullCCookType :: Maybe (Tree Int)
                      , _chopIns :: [Tree CHOP]
@@ -708,6 +709,7 @@ instance Op CHOP where
                                       , "period" <$$> _noiseCPeriod
                                       , "amp" <$$> _noiseCAmplitude
                                       , ("channelname",) <$> _noiseCChannels
+                                      , "seed" <$$> _noiseCSeed
                                       ] ++ chopBasePars n ++ vec3Map' "t" _noiseCTranslate
   pars n@(NullCHOP {..}) = catMaybes [("cooktype" <$$> _nullCCookType)] ++ chopBasePars n
   pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
@@ -1152,7 +1154,7 @@ mchan :: String -> Tree Float
 mchan s = chanNamef s $ N MidiIn
 
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
-noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing)
+noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing)
 noiseC = noiseC' id
 
 nullC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
