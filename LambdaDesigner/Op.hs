@@ -96,6 +96,9 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | Lag { _lagLag :: Vec2
                 , _chopIns :: [Tree CHOP]
                 }
+          | LeapMotion { _leapMotionPinchStrength :: Maybe (Tree Bool)
+                       , _leapMotionGrabStrength :: Maybe (Tree Bool)
+                       }
           | Logic { _logicPreop :: Maybe (Tree Int)
                   , _logicConvert :: Maybe (Tree Int)
                   , _chopIns :: [Tree CHOP]
@@ -199,6 +202,15 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                    , _deTableChange :: Maybe BS.ByteString
                    , _datVars :: [(ByteString, Tree ByteString)]
                    }
+         | ExecuteDAT { _executeDatActive :: Maybe (Tree Bool)
+                      , _executeDatStart :: Maybe ByteString
+                      , _executeDatCreate :: Maybe ByteString
+                      , _executeDatExit :: Maybe ByteString
+                      , _executeDatFramestart :: Maybe ByteString
+                      , _executeDatFrameend :: Maybe ByteString
+                      , _datIns :: [Tree DAT]
+                      , _datVars :: [(ByteString, Tree ByteString)]
+                      }
          | InDAT
          | OscInDAT { _oscInDPort :: Tree ByteString
                      , _oscInDSplitBundle :: Maybe (Tree Bool)
@@ -208,6 +220,7 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
          | OutDAT { _datIns :: [Tree DAT]
                   }
          | ScriptDAT { _scriptDatDat :: Tree DAT
+                     , _datVars :: [(ByteString, Tree ByteString)]
                      , _datIns :: [Tree DAT]
                      }
          | SelectDAT { _selectDRI :: Maybe (Tree Int)
@@ -694,6 +707,9 @@ instance Op CHOP where
   pars InCHOP = []
   pars n@(Lag {..}) = vec2Map ("1", "2") "lag" _lagLag ++ chopBasePars n
   pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
+  pars n@(LeapMotion {..}) = catMaybes [ "pinchstrength" <$$> _leapMotionPinchStrength
+                                       , "grabstrength" <$$> _leapMotionGrabStrength
+                                       ] ++ chopBasePars n
   pars n@(Math {..}) = catMaybes [ "preoff" <$$> _mathAdd
                                  , "postoff" <$$> _mathAddPost
                                  , "chopop" <$$> _mathCombChops
@@ -782,6 +798,7 @@ instance Op CHOP where
   opType (InCHOP {}) = "inChop"
   opType (Lag {}) = "lag"
   opType (Logic {}) = "logic"
+  opType (LeapMotion {}) = "leapmotion"
   opType (Math {}) = "math"
   opType (MergeCHOP {}) = "mergeChop"
   opType (MidiIn {}) = "midiIn"
@@ -822,6 +839,13 @@ instance Op DAT where
                                                                                     ])
   pars (CHOPToDAT {..}) = [("chop", ResolveP _chopToDatChop)]
   pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> _deTableChange])
+  pars (ExecuteDAT {..}) = catMaybes [ "active" <$$> _executeDatActive
+                                     , "start" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatStart)
+                                     , "create" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatCreate)
+                                     , "exit" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatExit)
+                                     , "framestart" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatFramestart)
+                                     , "frameend" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatFrameend)
+                                     ]
   pars n@(OscInDAT {..}) = ("port", _oscInDPort):(catMaybes ["splitbundle" <$$> _oscInDSplitBundle, "splitmessage" <$$> _oscInDSplitMessages, "bundletimestamp" <$$> _oscInDBundleTimestamp])
   pars (ScriptDAT {..}) = [("callbacks", ResolveP _scriptDatDat)]
   pars (SelectDAT {..}) = maybe altChoice (\row -> [("rowindexstart", Resolve row), ("rowindexend", Resolve row), ("extractrows", Resolve $ int 2)]) _selectDRI ++ [("dat", ResolveP _selectDat)]
@@ -845,6 +869,7 @@ instance Op DAT where
   opType (ChopExec _ _ _ _ _ _) = "chopExec"
   opType (CHOPToDAT {}) = "chopToDat"
   opType (DatExec {}) = "datExec"
+  opType (ExecuteDAT {}) = "executeDat"
   opType (InDAT {}) = "inDat"
   opType (OscInDAT {}) = "oscInDat"
   opType (OutDAT {}) = "outDat"
@@ -866,6 +891,20 @@ instance Op DAT where
       concatFunc (name, body) = BS.append (makec name) body
       makec prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev):\n"]
   text (DatExec {..}) = Just . BS.intercalate "\n\n" $ catMaybes [ BS.append "def tableChange(dat):\n" <$> _deTableChange]
+  text (ExecuteDAT {..}) =
+    Just . BS.intercalate "\n\n" $
+      ((traverse %~ concatFunc make_) $ catMaybes [ ("onStart",) <$> _executeDatStart
+                  , ("create",) <$> _executeDatCreate
+                  , ("onExit",) <$> _executeDatExit
+                  ]) ++
+      ((traverse %~ concatFunc makef) $ catMaybes [
+                  ("onFrameStart",) <$> _executeDatFramestart
+                  , ("onFrameEnd",) <$> _executeDatFrameend
+                  ])
+    where
+      concatFunc f (name, body) = BS.append (f name) body
+      makef prog = BS.concat ["def ", prog, "(frame):\n\t"]
+      make_ prog = BS.concat ["def ", prog, "():\n\t"]
   text (TextDAT {..}) = _textBlob
   text _ = Nothing
   commands (TextDAT _ f cs) = (maybeToList $ const (Pulse "loadonstartpulse" "1" 1) <$> f) ++ (uncurry Store <$> cs)
@@ -1139,6 +1178,10 @@ lag' f = N . f <$> Lag emptyV2 . (:[])
 lag :: Tree Float -> Tree Float -> Tree CHOP -> Tree CHOP
 lag a b t = N $ Lag (Just a, Just b) [t]
 
+leapmotion' :: (CHOP -> CHOP) -> Tree CHOP
+leapmotion' f = N . f $ LeapMotion Nothing Nothing
+leapmotion = leapmotion' id
+
 logic' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
@@ -1189,6 +1232,9 @@ resampleC' f tc = N . f <$> ResampleCHOP Nothing Nothing (Just $ bool tc) . (:[]
 
 scriptC :: String -> [Tree CHOP] -> Tree CHOP
 scriptC file = N <$> ScriptCHOP (fileD file)
+
+scriptCDAT :: String -> [Tree CHOP] -> Tree CHOP
+scriptCDAT file = N <$> ScriptCHOP (fileD file)
 
 selectC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 selectC' f c = N . f $ SelectCHOP Nothing (Just c) []
@@ -1248,6 +1294,9 @@ chopToD c = N $ CHOPToDAT c
 datExec' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 datExec' f d = N $ f $ DatExec d Nothing []
 
+executeD' :: (DAT -> DAT) -> [Tree DAT] -> Tree DAT
+executeD' f d = N $ f $ ExecuteDAT Nothing Nothing Nothing Nothing Nothing Nothing d []
+
 fileD' :: (DAT -> DAT) -> String -> Tree DAT
 fileD' f file = N . f $ (TextDAT Nothing (Just . PyExpr $ BS.pack ("\"" ++ file ++ "\"")) [])
 fileD = fileD' id
@@ -1255,8 +1304,9 @@ fileD = fileD' id
 oscinD :: Int -> Tree DAT
 oscinD p = N $ OscInDAT (Resolve $ int p) (Just $ bool True) (Just $ bool True) (Just $ bool True)
 
-scriptD :: String -> [Tree DAT] -> Tree DAT
-scriptD file = N <$> ScriptDAT (fileD file)
+scriptD' :: (DAT -> DAT) -> String -> [Tree DAT] -> Tree DAT
+scriptD' f file = N . f <$> ScriptDAT (fileD file) []
+scriptD = scriptD' id
 
 selectD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
 selectD' f t = N . f $ SelectDAT Nothing Nothing Nothing Nothing Nothing Nothing t
