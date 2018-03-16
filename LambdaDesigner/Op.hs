@@ -110,6 +110,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                  , _mathCombChans :: Maybe (Tree Int)
                  , _mathInt :: Maybe (Tree Int)
                  , _mathMult :: Maybe (Tree Float)
+                 , _mathPostOp :: Maybe (Tree Int)
                  , _chopIns :: [Tree CHOP]
                  }
           | MergeCHOP { _mergeCDupes :: Maybe (Tree Int)
@@ -158,6 +159,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                         , _chopIns :: [Tree CHOP]
                         }
           | SOPToCHOP { _sopToChopSop :: Tree SOP }
+          | SpeedCHOP { _chopIns :: [ Tree CHOP ] }
           | SwitchCHOP { _switchCIndex :: Tree Int
                        , _chopIns :: [Tree CHOP]
                        }
@@ -182,6 +184,11 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerShowFraction :: Maybe (Tree Bool)
                   , _timerCycle :: Maybe (Tree Bool)
                   , _timerCycleLimit :: Maybe (Tree Bool)
+                  }
+          | Trail { _trailActive :: Maybe (Tree Bool)
+                  , _trailWindowLengthFrames :: Maybe (Tree Int)
+                  , _trailCapture :: Maybe (Tree Int)
+                  , _chopIns :: [Tree CHOP]
                   }
           | WaveCHOP { _waveExprs :: Tree Float
                      , _waveEnd :: Tree Int
@@ -544,9 +551,6 @@ chanIndex = PyExpr "me.chanIndex"
 opInput :: (Op a) => Tree Int -> Tree a
 opInput = Mod (\i -> BS.concat ["me.inputs[", i, "]"])
 
-input :: (Op a) => Tree Int -> Tree a
-input = Mod (\i -> BS.concat ["me.inputs[", i, "]"])
-
 scycle :: Float -> Float -> Tree Float
 scycle a b = float b !* ((float a !* seconds) !% float 1)
 
@@ -717,6 +721,7 @@ instance Op CHOP where
                                  , "integer" <$$> _mathInt
                                  , "align" <$$> _mathAlign
                                  , "gain" <$$> _mathMult
+                                 , "postop" <$$> _mathPostOp
                                  ] ++ chopBasePars n
   pars n@(MergeCHOP {..}) = catMaybes ["duplicate" <$$> _mergeCDupes, "align" <$$> _mergeCAlign] ++ chopBasePars n
   pars MidiIn = []
@@ -744,6 +749,7 @@ instance Op CHOP where
   pars n@(ScriptCHOP {..}) = [("callbacks", ResolveP _scriptChopDat)]
   pars n@(SelectCHOP {..}) = catMaybes [(("chop",) . ResolveP <$> _selectCChop), "channames" <$$> _selectCNames] ++ chopBasePars n
   pars n@(ShuffleCHOP {..}) = [("method", Resolve _shuffleCMethod)] ++ chopBasePars n
+  pars n@(SpeedCHOP {..}) = chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
   pars n@(StretchCHOP {..}) = [("end", Resolve _stretchCEnd), ("relative", Resolve $ int 0)] ++ chopBasePars n
@@ -768,6 +774,11 @@ instance Op CHOP where
                                   , ("outfraction" <$$> _timerShowFraction)
                                   , ("cycle" <$$> _timerCycle)
                                   , ("cyclelimit" <$$> _timerCycleLimit)
+                                  ] ++ chopBasePars n
+  pars n@(Trail {..}) = catMaybes [ ("active" <$$> _trailActive)
+                                  , ("wlength" <$$> _trailWindowLengthFrames)
+                                  , ("wlengthunit",) . Resolve . const (int 0) <$> _trailWindowLengthFrames
+                                  , "capture" <$$> _trailCapture
                                   ] ++ chopBasePars n
   pars n@(WaveCHOP {..}) = mconcat [ chopBasePars n
                                    , [ ("exprs", ResolveP _waveExprs)
@@ -815,8 +826,10 @@ instance Op CHOP where
   opType (SelectCHOP {}) = "selectChop"
   opType (ShuffleCHOP {}) = "shuffleChop"
   opType (SOPToCHOP _) = "sopToChop"
+  opType (SpeedCHOP {}) = "speedChop"
   opType (TOPToCHOP {}) = "topToChop"
   opType (Timer {}) = "timer"
+  opType (Trail {}) = "trailChop"
   opType (WaveCHOP {}) = "waveChop"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
   commands (Timer {..}) = L.map fst . L.filter snd $ L.zip [Pulse "start" "1" 2, Pulse "cuepulse" "1" 1, Pulse "initialize" "1" 1] [_timerStart, _timerCue, _timerInit]
@@ -1187,7 +1200,7 @@ logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
 
 math' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
-math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 mergeC' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 mergeC' f = N . f <$> MergeCHOP Nothing Nothing
@@ -1249,6 +1262,9 @@ shuffleC s = N <$> ShuffleCHOP s . (:[])
 sopToC :: Tree SOP -> Tree CHOP
 sopToC = N <$> SOPToCHOP
 
+speedC :: Tree CHOP -> Maybe (Tree CHOP) -> Tree CHOP
+speedC s r = N $ SpeedCHOP (s:(catMaybes [r]))
+
 stretchC :: Tree Int -> Tree CHOP -> Tree CHOP
 stretchC i = N <$> StretchCHOP i . (:[])
 
@@ -1258,6 +1274,9 @@ switchC i = N <$> SwitchCHOP i
 topToC' :: (CHOP -> CHOP) -> Tree TOP -> Tree CHOP
 topToC' f = N . f <$> TOPToCHOP Nothing Nothing Nothing Nothing Nothing
 topToC = topToC' id
+
+trailC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
+trailC' f i = N . f $ Trail Nothing Nothing Nothing [i]
 
 waveC' :: (CHOP -> CHOP) -> Tree Int -> Tree Float -> Tree CHOP
 waveC' f e ex = N . f $ WaveCHOP ex e Nothing Nothing
