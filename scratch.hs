@@ -19,18 +19,10 @@ import qualified Data.ByteString.Char8 as BS
 
 go =
   let
-    beat = constC [seconds !% float 1]
-           & logic' (logicPreop ?~ int 5) . (:[])
-    beatdelay = beat & delay (int 1)
-    beatspeed = expressionC [ternary (chan0f (opInput (int 0)) !== float 0) (float 0) (chan0f (opInput (int 0)))] 
-                  [speedC (beatdelay & logic' (logicPreop ?~ int 1) . (:[])) (Just beatdelay)]
-    beathold = hold beatspeed beat
-    beattrail = trailC' ((trailActive ?~ chan0f beat !== float 1) . (trailWindowLengthFrames ?~ int 10) . (trailCapture ?~ int 1)) beathold
-    beataccum = speedC (math' (mathPostOp ?~ int 5) . (:[]) $ analyze (int 0) beattrail) (Just beat)
-    turnt = chan0f $ expressionC [castf $ ((chan0f $ opInput (int 0)) !% float 1 !> float 0) !&& ((chan0f $ opInput (int 0)) !% float 1 !< float 0.16)] [beataccum]
+
   in do
     r <- newIORef mempty
-    run r [ outT $ textT (str "beat") & levelT' (levelOpacity ?~ turnt)]
+    run r [ outT $ chopToT $ reorderC' (reorderSeed ?~ int 10) (int 7) $ constC $ float . (/ 128) . fromIntegral <$> [0..128]]
 
 -- go =
 --   let

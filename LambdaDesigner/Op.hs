@@ -138,6 +138,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                        , _renameCFrom :: Maybe (Tree ByteString)
                        , _chopIns :: [Tree CHOP]
                        }
+          | Reorder { _reorderMethod :: Tree Int
+                    , _reorderSeed :: Maybe (Tree Int)
+                    , _chopIns :: [Tree CHOP]
+                    }
           | ReplaceCHOP { _chopIns :: [Tree CHOP]
                         }
           | ResampleCHOP { _resampleEnd :: Maybe (Tree Int)
@@ -490,6 +494,9 @@ casti = Mod (\fl -> BS.concat ["int(", fl, ")"])
 castf :: (Floating f) => Tree i -> Tree f
 castf = Mod (\fl -> BS.concat ["float(", fl, ")"])
 
+castb :: Tree a -> Tree b
+castb = Mod (\fl -> BS.concat ["bool(", fl, ")"])
+
 caststr :: (Show a) => Tree a -> Tree ByteString
 caststr = Mod (\s -> BS.concat ["str(", s, ")"])
 
@@ -736,6 +743,7 @@ instance Op CHOP where
   pars n@(OscInCHOP {..}) = [("port", _oscInCPort)]
   pars (OutCHOP _) = []
   pars n@(RenameCHOP {..}) = mconcat [catMaybes ["renamefrom" <$$> _renameCFrom], [("renameto", Resolve $ _renameCTo)], chopBasePars n]
+  pars n@(Reorder {..}) = [("method", Resolve _reorderMethod)] ++ catMaybes ["seed" <$$> _reorderSeed] ++ chopBasePars n
   pars n@(ReplaceCHOP {..}) = chopBasePars n
   pars n@(ResampleCHOP {..}) =
     let
@@ -820,6 +828,7 @@ instance Op CHOP where
   opType (SwitchCHOP {}) = "switchChop"
   opType (StretchCHOP {}) = "stretchChop"
   opType (RenameCHOP {}) = "renameChop"
+  opType (Reorder {}) = "reorderChop"
   opType (ReplaceCHOP {}) = "replaceChop"
   opType (ResampleCHOP {}) = "resampleChop"
   opType (ScriptCHOP {}) = "scriptChop"
@@ -1236,6 +1245,9 @@ outC = N <$> OutCHOP . (:[])
 renameC' :: (CHOP -> CHOP) -> Tree ByteString -> Tree CHOP -> Tree CHOP
 renameC' f newName = N . f <$> RenameCHOP newName Nothing . (:[])
 renameC = renameC' id
+
+reorderC' :: (CHOP -> CHOP) -> Tree Int -> Tree CHOP -> Tree CHOP
+reorderC' f m = N . f <$> Reorder m Nothing . (:[])
 
 replaceC :: [Tree CHOP] -> Tree CHOP
 replaceC = N <$> ReplaceCHOP
