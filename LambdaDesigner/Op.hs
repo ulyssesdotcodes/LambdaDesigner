@@ -703,7 +703,7 @@ instance Op CHOP where
                                   , "resetcondition" <$$> _countResetCondition
                                   ] ++ chopBasePars n
   pars n@(DATToCHOP {..}) = [("dat", ResolveP _datToChopDat)] ++ catMaybes ["firstcolumn" <$$> _datToChopFirstColumn] ++ chopBasePars n
-  pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames)]
+  pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames), ("maxdelayunit", Resolve $ int 1), ("maxdelay", Resolve _delayFrames)]
   pars n@(DeleteCHOP {..}) = catMaybes [ "selnumbers" <$$> _deleteCNumbers
                                        , ("select",) . Resolve . const (int 1) <$> _deleteCNumbers
                                        , "discard" <$$> _deleteCNonScoped
