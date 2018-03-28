@@ -1218,6 +1218,9 @@ mergeC = mergeC' id
 mchan :: String -> Tree Float
 mchan s = chanNamef s $ N MidiIn
 
+mselect :: String -> Tree CHOP
+mselect s = selectC' (selectCNames ?~ str s) $ N MidiIn
+
 noiseC' :: (CHOP -> CHOP) -> Tree CHOP
 noiseC' f = N (f $ NoiseCHOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing)
 noiseC = noiseC' id

@@ -19,10 +19,10 @@ import qualified Data.ByteString.Char8 as BS
 
 go =
   let
-
   in do
     r <- newIORef mempty
-    run r [ outT $ chopToT $ reorderC' (reorderSeed ?~ int 10) (int 7) $ constC $ float . (/ 128) . fromIntegral <$> [0..128]]
+    run r [outC $ mselect "b1"]
+    -- run r [ outT $ chopToT $ logic' (logicCombineChops ?~ int 1) [logic' (logicCombineChans ?~ int 6) [constC [float 5, floor (seconds !% float 10)]], constC [float 1]]]
 
 -- go =
 --   let
