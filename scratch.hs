@@ -17,12 +17,14 @@ import Debug.Trace
 import qualified Data.Vector as V
 import qualified Data.ByteString.Char8 as BS
 
-go =
+go = 
   let
-
+    leddata = constC [seconds !% float 1] & resampleC' (resampleEnd ?~ int 450) False
+    sendleddata = fileD' (datVars .~ [("leddata", Resolve $ leddata), ("arduino", Resolve $ arduino "COM10" 6)]) "scripts/sendleddata.py" 
   in do
     r <- newIORef mempty
-    run r [ outT $ chopToT $ reorderC' (reorderSeed ?~ int 10) (int 7) $ constC $ float . (/ 128) . fromIntegral <$> [0..128]]
+    run r [executeD' ((executeDatFrameEnd ?~ "mod(me.fetch(\"sendleddata\")[1:]).onFrameUpdate(frame)") . (datVars .~ [("sendleddata", Resolve $ sendleddata)])) []]
+    -- run r [ outT $ chopToT $ logic' (logicCombineChops ?~ int 1) [logic' (logicCombineChans ?~ int 6) [constC [float 5, floor (seconds !% float 10)]], constC [float 1]]]
 
 -- go =
 --   let
