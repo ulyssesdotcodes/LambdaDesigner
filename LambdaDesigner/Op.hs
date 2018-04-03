@@ -784,7 +784,7 @@ instance Op CHOP where
   pars n@(SpeedCHOP {..}) = chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
   pars n@(SwitchCHOP {..}) = [("index", Resolve _switchCIndex)] ++ chopBasePars n
-  pars n@(StretchCHOP {..}) = [("end", Resolve _stretchCEnd), ("relative", Resolve $ int 0)] ++ chopBasePars n
+  pars n@(StretchCHOP {..}) = [("end", Resolve _stretchCEnd), ("relative", Resolve $ int 0), ("endunit", Resolve $ int 1)] ++ chopBasePars n
   pars n@(TOPToCHOP {..}) = [("top", ResolveP _topToChopTop)] ++
                             catMaybes [ "downloadtype" <$$> _topToChopDownloadType
                                       , "crop" <$$> _topToChopCrop
