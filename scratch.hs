@@ -17,11 +17,12 @@ import Debug.Trace
 import qualified Data.Vector as V
 import qualified Data.ByteString.Char8 as BS
 
-go =
+go = 
   let
+    dtc = datToC' ((datToCOutput ?~ int 0) . (datToCFirstRow ?~ int 1) . (datToCFirstCol ?~ int 2)) 
   in do
     r <- newIORef mempty
-    run r [outC $ mselect "b1"]
+    run r [outC $ math' (mathFromRange._2 ?~ float 1000) . (:[]) $ timeslice $ dtc $ arduino "COM10" 2]
     -- run r [ outT $ chopToT $ logic' (logicCombineChops ?~ int 1) [logic' (logicCombineChans ?~ int 6) [constC [float 5, floor (seconds !% float 10)]], constC [float 1]]]
 
 -- go =

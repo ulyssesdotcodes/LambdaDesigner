@@ -24,6 +24,7 @@ import qualified Data.Bool as DB
 data CommandType = Pulse ByteString ByteString Int
                  | Store ByteString (Tree ByteString)
 
+
 class (Op a) => Baseable a where
   inOp :: Tree a
   outOp :: Tree a -> Tree a
@@ -43,6 +44,7 @@ class Op a where
   commands _ = []
 
 data CHOP = Analyze { _analyzeFunc :: Tree Int
+
                     , _chopIns :: [Tree CHOP]
                     }
           | AudioDeviceOut { _audioDevOutVolume :: Maybe (Tree Float)
@@ -71,8 +73,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _countLimMax :: Maybe (Tree Float)
                   , _countResetCondition :: Maybe (Tree Int)
                   }
-          | DATToCHOP { _datToChopFirstColumn :: Maybe (Tree Int)
-                      , _datToChopDat :: Tree DAT
+          | DATToCHOP { _datToCFirstCol :: Maybe (Tree Int)
+                      , _datToCFirstRow :: Maybe (Tree Int)
+                      , _datToCOutput :: Maybe (Tree Int)
+                      , _datToCDat :: Tree DAT
                       }
           | Delay { _delayFrames :: Tree Int
                   , _chopIns :: [Tree CHOP]
@@ -111,6 +115,8 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                  , _mathInt :: Maybe (Tree Int)
                  , _mathMult :: Maybe (Tree Float)
                  , _mathPostOp :: Maybe (Tree Int)
+                 , _mathFromRange :: Vec2
+                 , _mathToRange :: Vec2
                  , _chopIns :: [Tree CHOP]
                  }
           | MergeCHOP { _mergeCDupes :: Maybe (Tree Int)
@@ -189,6 +195,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerCycle :: Maybe (Tree Bool)
                   , _timerCycleLimit :: Maybe (Tree Bool)
                   }
+          | TimeSlice { _chopIns :: [ Tree CHOP ] }
           | Trail { _trailActive :: Maybe (Tree Bool)
                   , _trailWindowLengthFrames :: Maybe (Tree Int)
                   , _trailCapture :: Maybe (Tree Int)
@@ -241,6 +248,11 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                      , _selectDREndN :: Maybe (Tree ByteString)
                      , _selectDRExpr :: Maybe (Tree ByteString)
                      , _selectDat :: Tree DAT
+                     }
+         | SerialDAT { _serialDBaud :: Maybe (Tree Int)
+                     , _serialDPort :: String
+                     , _serialDStopBits :: Maybe (Tree Int)
+                     , _serialDCallbacks :: Maybe (Tree DAT)
                      }
          | Table { _tableText :: Maybe (Matrix ByteString)
                  , _tableFile :: Maybe (Tree BS.ByteString)
@@ -616,6 +628,7 @@ type IVec2 = (Maybe (Tree Int), Maybe (Tree Int))
 v2 :: Tree Float -> Tree Float -> Vec2
 v2 x y = (Just x, Just y)
 
+
 v3 :: Tree Float -> Tree Float -> Tree Float -> Vec3
 v3 x y z = (Just x, Just y, Just z)
 
@@ -702,7 +715,12 @@ instance Op CHOP where
                                   , "limitmax" <$$> _countLimMax
                                   , "resetcondition" <$$> _countResetCondition
                                   ] ++ chopBasePars n
-  pars n@(DATToCHOP {..}) = [("dat", ResolveP _datToChopDat)] ++ catMaybes ["firstcolumn" <$$> _datToChopFirstColumn] ++ chopBasePars n
+  pars n@(DATToCHOP {..}) = [("dat", ResolveP _datToCDat)]
+    ++ catMaybes
+      [ "firstcolumn" <$$> _datToCFirstCol
+      , "firstrow" <$$> _datToCFirstRow
+      , "output" <$$> _datToCOutput
+      ] ++ chopBasePars n
   pars n@(Delay {..}) = [("delayunit", Resolve $ int 1), ("delay", Resolve _delayFrames), ("maxdelayunit", Resolve $ int 1), ("maxdelay", Resolve _delayFrames)]
   pars n@(DeleteCHOP {..}) = catMaybes [ "selnumbers" <$$> _deleteCNumbers
                                        , ("select",) . Resolve . const (int 1) <$> _deleteCNumbers
@@ -729,7 +747,7 @@ instance Op CHOP where
                                  , "align" <$$> _mathAlign
                                  , "gain" <$$> _mathMult
                                  , "postop" <$$> _mathPostOp
-                                 ] ++ chopBasePars n
+                                 ] ++ vec2Map ("1", "2") "fromrange" _mathFromRange ++ vec2Map ("1", "2") "torange" _mathToRange ++ chopBasePars n
   pars n@(MergeCHOP {..}) = catMaybes ["duplicate" <$$> _mergeCDupes, "align" <$$> _mergeCAlign] ++ chopBasePars n
   pars MidiIn = []
   pars n@(NoiseCHOP {..}) = catMaybes [ "roughness" <$$> _noiseCRoughness
@@ -783,6 +801,7 @@ instance Op CHOP where
                                   , ("cycle" <$$> _timerCycle)
                                   , ("cyclelimit" <$$> _timerCycleLimit)
                                   ] ++ chopBasePars n
+  pars n@(TimeSlice {..}) = chopBasePars n
   pars n@(Trail {..}) = catMaybes [ ("active" <$$> _trailActive)
                                   , ("wlength" <$$> _trailWindowLengthFrames)
                                   , ("wlengthunit",) . Resolve . const (int 0) <$> _trailWindowLengthFrames
@@ -838,12 +857,14 @@ instance Op CHOP where
   opType (SpeedCHOP {}) = "speedChop"
   opType (TOPToCHOP {}) = "topToChop"
   opType (Timer {}) = "timer"
+  opType (TimeSlice {}) = "timesliceChop"
   opType (Trail {}) = "trailChop"
   opType (WaveCHOP {}) = "waveChop"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
   commands (Timer {..}) = L.map fst . L.filter snd $ L.zip [Pulse "start" "1" 2, Pulse "cuepulse" "1" 1, Pulse "initialize" "1" 1] [_timerStart, _timerCue, _timerInit]
   commands _ = []
   connections (maybeToList . flip (^?) chopIns -> cs) = mconcat cs
+
 
 chopBasePars :: CHOP -> [(ByteString, (Tree ByteString))]
 chopBasePars c = catMaybes [ "timeslice" <$$> (c ^? chopTimeSlice . _Just)]
@@ -884,6 +905,13 @@ instance Op DAT where
                             chooseType _ (Just _) Nothing Nothing (Just _) = 3
                             chooseType _ Nothing (Just _) (Just _) Nothing = 4
                             chooseType _ _ _ _ _ = 0
+  pars (SerialDAT {..}) =
+    [ ("port", Resolve $ str _serialDPort) ]
+    ++ catMaybes
+      [ "baudrate" <$$> _serialDBaud
+      , "stopbits" <$$> _serialDStopBits
+      , ("callbacks",) . ResolveP <$> _serialDCallbacks
+      ]
   pars (TextDAT {..}) = catMaybes [("file" <$$> _textFile)]
   pars (Table {..}) = catMaybes [("file" <$$> _tableFile)]
   pars (TCPIPDAT m d f _) = ("callbacks", ResolveP d):(catMaybes [("mode" <$$> m), ("format" <$$> f)])
@@ -897,6 +925,7 @@ instance Op DAT where
   opType (OutDAT {}) = "outDat"
   opType (ScriptDAT {}) = "scriptDat"
   opType (SelectDAT {}) = "selectDat"
+  opType (SerialDAT {}) = "serialDat"
   opType (TextDAT {}) = "textDat"
   opType (Table {}) = "table"
   opType (TCPIPDAT _ _ _ _) = "tcpip"
@@ -1043,6 +1072,7 @@ instance Op TOP where
               ] ++ topBasePars t
   pars _ = []
 
+
   opType (Blur {}) = "blur"
   opType (CHOPToTOP _) = "chopToTop"
   opType CircleTOP = "circleTop"
@@ -1135,6 +1165,7 @@ instance Op BaseCOMP where
 analyze :: Tree Int -> Tree CHOP -> Tree CHOP
 analyze f c = N $ Analyze f [c]
 
+
 audioDevOut' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 audioDevOut' f = N <$> f . AudioDeviceOut Nothing . (:[])
 audioDevOut = audioDevOut' id
@@ -1148,6 +1179,7 @@ audioMovie movieTop = N $ AudioMovie movieTop
 
 audioIn :: Tree CHOP
 audioIn = N $ AudioIn
+
 
 lowPass :: Tree CHOP -> Tree CHOP
 lowPass t = N $ AudioFilter (int 0) Nothing [t]
@@ -1172,8 +1204,9 @@ count' f t = N ins
 count = count' id
 
 datToC' :: (CHOP -> CHOP) -> Tree DAT -> Tree CHOP
-datToC' f = N . f <$> DATToCHOP Nothing
+datToC' f = N . f <$> DATToCHOP Nothing Nothing Nothing
 datToC = datToC' id
+
 
 delay :: Tree Int -> Tree CHOP -> Tree CHOP
 delay f = N <$> Delay f . (:[])
@@ -1181,11 +1214,13 @@ delay f = N <$> Delay f . (:[])
 deleteCNum' :: (CHOP -> CHOP) -> Tree ByteString -> Tree CHOP -> Tree CHOP
 deleteCNum' f d = N . f <$> DeleteCHOP (Just d) Nothing . (:[])
 
+
 expressionC :: [Tree Float] -> [Tree CHOP] -> Tree CHOP
 expressionC es is = N $ ExpressionCHOP es is
 
 feedbackC :: Tree CHOP -> (Tree CHOP -> Tree CHOP) -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
 feedbackC = FC (FeedbackCHOP [])
+
 
 fan' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 fan' f = N <$> f . Fan Nothing Nothing . (:[])
@@ -1209,7 +1244,8 @@ logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
 
 math' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
-math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 emptyV2
+
 
 mergeC' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 mergeC' f = N . f <$> MergeCHOP Nothing Nothing
@@ -1233,11 +1269,13 @@ cookC = nullC' (nullCCookType ?~ int 1)
 oscinC :: Int -> Tree CHOP
 oscinC p = N $ OscInCHOP (Resolve $ int p)
 
+
 opsadd :: CHOP -> CHOP
 opsadd = mathCombChops .~ Just (int 1)
 
 opaddf :: Float -> CHOP -> CHOP
 opaddf a = mathAdd .~ Just (float a)
+
 
 opmultf :: Float -> CHOP -> CHOP
 opmultf a = mathMult .~ Just (float a)
@@ -1271,17 +1309,20 @@ selectC = selectC' id
 selectCConnect' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 selectCConnect' f = N . f <$> SelectCHOP Nothing Nothing . (:[])
 
+
 shuffleC :: Tree Int -> Tree CHOP -> Tree CHOP
 shuffleC s = N <$> ShuffleCHOP s . (:[])
 
 sopToC :: Tree SOP -> Tree CHOP
 sopToC = N <$> SOPToCHOP
 
+
 speedC :: Tree CHOP -> Maybe (Tree CHOP) -> Tree CHOP
 speedC s r = N $ SpeedCHOP (s:(catMaybes [r]))
 
 stretchC :: Tree Int -> Tree CHOP -> Tree CHOP
 stretchC i = N <$> StretchCHOP i . (:[])
+
 
 switchC :: Tree Int -> [Tree CHOP] -> Tree CHOP
 switchC i = N <$> SwitchCHOP i
@@ -1301,6 +1342,7 @@ data TimerSegment = TimerSegment { segDelay :: Float
                                  , segLength :: Float
                                  }
 
+
 timerBS :: TimerSegment -> [ByteString]
 timerBS (TimerSegment {..}) = [pack $ show segDelay, pack $ show segLength]
 
@@ -1314,7 +1356,13 @@ timerF' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 1) (Just l) Noth
 timerS' :: (CHOP -> CHOP) -> Tree Float -> Tree CHOP
 timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just l) Nothing False False False Nothing Nothing Nothing Nothing
 
+timeslice :: Tree CHOP -> Tree CHOP
+timeslice c = N $ TimeSlice [c]
+
 -- DATs
+
+arduino :: String -> Int -> Tree DAT
+arduino p b = N $ SerialDAT (Just $ int b) p (Just $ int 0) Nothing
 
 cell :: (Integral a, Integral b) => (Tree a, Tree b) -> Tree DAT -> Tree BS.ByteString
 cell (r, c) = Mod3 (\r' c' d -> BS.concat [d, "[", r', ",", c', "]"]) r c
@@ -1338,6 +1386,7 @@ fileD = fileD' id
 oscinD :: Int -> Tree DAT
 oscinD p = N $ OscInDAT (Resolve $ int p) (Just $ bool True) (Just $ bool True) (Just $ bool True)
 
+
 scriptD' :: (DAT -> DAT) -> String -> [Tree DAT] -> Tree DAT
 scriptD' f file = N . f <$> ScriptDAT (fileD file) []
 scriptD = scriptD' id
@@ -1357,6 +1406,7 @@ tcpipD' f d = N . f $ TCPIPDAT Nothing d Nothing []
 textD' :: (DAT -> DAT) -> String -> Tree DAT
 textD' f t = N . f $ TextDAT (Just $ BS.pack t) Nothing []
 textD = textD' id
+
 
 -- MATs
 
