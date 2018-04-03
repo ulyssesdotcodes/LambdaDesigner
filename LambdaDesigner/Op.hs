@@ -64,7 +64,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | AudioMovie { _audioMovieFileInTOP :: Tree TOP
                        }
           | AudioSpectrum { _chopIns :: [Tree CHOP] }
-          | ConstantCHOP { _values :: [Tree Float] }
+          | ConstantCHOP 
+            { _constCValues :: [Tree Float] 
+            , _constCEndFrames :: Maybe (Tree Int)
+            }
           | Count { _chopIns :: [Tree CHOP]
                   , _countReset :: Maybe (Tree CHOP)
                   , _countThresh :: Maybe (Tree Float)
@@ -708,7 +711,10 @@ instance Op CHOP where
   pars (AudioMovie {..}) = [ ("moviefileintop", ResolveP _audioMovieFileInTOP)
                            ]
   pars (AudioSpectrum _) = []
-  pars n@(ConstantCHOP v) = L.concat (L.zipWith (\i v' -> [(BS.pack $ "value" ++ show i, Resolve v'), (BS.pack $ "name" ++ show i, str $ "chan" ++ show i)]) [0..] v) ++ chopBasePars n
+  pars n@(ConstantCHOP {..}) = 
+    L.concat (L.zipWith (\i v' -> [(BS.pack $ "value" ++ show i, Resolve v'), (BS.pack $ "name" ++ show i, str $ "chan" ++ show i)]) [0..] _constCValues) 
+    ++ catMaybes [ "single" <$$> (const (int 0) <$> _constCEndFrames), "end" <$$> _constCEndFrames, "endunit" <$$> (const (int 1) <$> _constCEndFrames) ]
+    ++ chopBasePars n
   pars n@(Count {..}) = catMaybes [ "threshup" <$$> _countThresh
                                   , "output" <$$> _countLimType
                                   , "limitmin" <$$> _countLimMin
@@ -1193,8 +1199,9 @@ bandPass b t = N $ AudioFilter (int 2) (Just (b !* float 4.5)) [t]
 audioSpectrum :: Tree CHOP -> Tree CHOP
 audioSpectrum t = N $ AudioSpectrum [t]
 
-constC :: [Tree Float] -> Tree CHOP
-constC = N <$> ConstantCHOP
+constC' :: (CHOP -> CHOP) -> [Tree Float] -> Tree CHOP
+constC' f fs = N . f $ ConstantCHOP fs Nothing
+constC = constC' id
 
 count' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 count' f t = N ins

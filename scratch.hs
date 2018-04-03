@@ -19,10 +19,10 @@ import qualified Data.ByteString.Char8 as BS
 
 go = 
   let
-    dtc = datToC' ((datToCOutput ?~ int 0) . (datToCFirstRow ?~ int 1) . (datToCFirstCol ?~ int 2)) 
+    constctest = constC' (constCEndFrames ?~ int 10) [float 0.5]
   in do
     r <- newIORef mempty
-    run r [outC $ math' (mathFromRange._2 ?~ float 1000) . (:[]) $ timeslice $ dtc $ arduino "COM10" 2]
+    run r [outC constctest]
     -- run r [ outT $ chopToT $ logic' (logicCombineChops ?~ int 1) [logic' (logicCombineChans ?~ int 6) [constC [float 5, floor (seconds !% float 10)]], constC [float 1]]]
 
 -- go =
