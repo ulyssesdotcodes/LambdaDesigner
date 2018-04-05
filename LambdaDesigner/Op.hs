@@ -106,6 +106,13 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | LeapMotion { _leapMotionPinchStrength :: Maybe (Tree Bool)
                        , _leapMotionGrabStrength :: Maybe (Tree Bool)
                        }
+          | Limit
+            { _limitCType :: Tree Int
+            , _limitCMin :: Tree Float
+            , _limitCMax :: Tree Float
+            , _limitCNormalize :: Maybe (Tree Bool)
+            , _chopIns :: [Tree CHOP]
+            }
           | Logic { _logicPreop :: Maybe (Tree Int)
                   , _logicConvert :: Maybe (Tree Int)
                   , _chopIns :: [Tree CHOP]
@@ -199,6 +206,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _timerCycleLimit :: Maybe (Tree Bool)
                   }
           | TimeSlice { _chopIns :: [ Tree CHOP ] }
+          | Timeline {}
           | Trail { _trailActive :: Maybe (Tree Bool)
                   , _trailWindowLengthFrames :: Maybe (Tree Int)
                   , _trailCapture :: Maybe (Tree Int)
@@ -742,6 +750,11 @@ instance Op CHOP where
   pars InCHOP = []
   pars n@(Lag {..}) = vec2Map ("1", "2") "lag" _lagLag ++ chopBasePars n
   pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
+  pars n@(Limit {..}) = 
+    [ ("type",) . Resolve $ _limitCType
+    , ("min",) . Resolve $ _limitCMin
+    , ("max",) . Resolve $ _limitCMax
+    ] ++ catMaybes ["norm" <$$> _limitCNormalize] ++ chopBasePars n
   pars n@(LeapMotion {..}) = catMaybes [ "pinchstrength" <$$> _leapMotionPinchStrength
                                        , "grabstrength" <$$> _leapMotionGrabStrength
                                        ] ++ chopBasePars n
@@ -808,6 +821,7 @@ instance Op CHOP where
                                   , ("cyclelimit" <$$> _timerCycleLimit)
                                   ] ++ chopBasePars n
   pars n@(TimeSlice {..}) = chopBasePars n
+  pars n@(Timeline {}) = []
   pars n@(Trail {..}) = catMaybes [ ("active" <$$> _trailActive)
                                   , ("wlength" <$$> _trailWindowLengthFrames)
                                   , ("wlengthunit",) . Resolve . const (int 0) <$> _trailWindowLengthFrames
@@ -841,6 +855,7 @@ instance Op CHOP where
   opType (Hold {}) = "hold"
   opType (InCHOP {}) = "inChop"
   opType (Lag {}) = "lag"
+  opType (Limit {}) = "limitChop"
   opType (Logic {}) = "logic"
   opType (LeapMotion {}) = "leapmotion"
   opType (Math {}) = "math"
@@ -864,6 +879,7 @@ instance Op CHOP where
   opType (TOPToCHOP {}) = "topToChop"
   opType (Timer {}) = "timer"
   opType (TimeSlice {}) = "timesliceChop"
+  opType (Timeline {}) = "timelineChop"
   opType (Trail {}) = "trailChop"
   opType (WaveCHOP {}) = "waveChop"
   commands (Count {}) = [Pulse "resetpulse" "1" 1]
@@ -1246,6 +1262,10 @@ leapmotion' :: (CHOP -> CHOP) -> Tree CHOP
 leapmotion' f = N . f $ LeapMotion Nothing Nothing
 leapmotion = leapmotion' id
 
+limitC' :: (CHOP -> CHOP) -> Tree Int -> Tree Float -> Tree Float -> Tree CHOP -> Tree CHOP
+limitC' f t min max = N <$> f . Limit t min max Nothing . (:[])
+limitC = limitC' id
+
 logic' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
@@ -1365,6 +1385,9 @@ timerS' f l = N . f $ Timer Nothing Nothing Nothing (Just $ int 2) Nothing (Just
 
 timeslice :: Tree CHOP -> Tree CHOP
 timeslice c = N $ TimeSlice [c]
+
+timeline :: Tree CHOP
+timeline = N Timeline
 
 -- DATs
 
