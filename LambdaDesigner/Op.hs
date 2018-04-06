@@ -175,6 +175,10 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | StretchCHOP { _stretchCEnd :: Tree Int
                         , _chopIns :: [Tree CHOP]
                         }
+          | ShiftCHOP
+            { _shiftCScroll :: Tree Int
+            , _chopIns :: [Tree CHOP]
+            }
           | ShuffleCHOP { _shuffleCMethod :: Tree Int
                         , _chopIns :: [Tree CHOP]
                         }
@@ -186,6 +190,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
           | TOPToCHOP { _topToChopRName :: Maybe (Tree ByteString)
                       , _topToChopGName :: Maybe (Tree ByteString)
                       , _topToChopBName :: Maybe (Tree ByteString)
+                      , _topToChopAName :: Maybe (Tree ByteString)
                       , _topToChopDownloadType :: Maybe (Tree Int)
                       , _topToChopCrop :: Maybe (Tree Int)
                       , _topToChopTop :: Tree TOP
@@ -793,6 +798,7 @@ instance Op CHOP where
                 ] ++ [ ("method", Resolve . int $ method _resampleRate _resampleEnd) ] ++ chopBasePars n
   pars n@(ScriptCHOP {..}) = [("callbacks", ResolveP _scriptChopDat)]
   pars n@(SelectCHOP {..}) = catMaybes [(("chop",) . ResolveP <$> _selectCChop), "channames" <$$> _selectCNames] ++ chopBasePars n
+  pars n@(ShiftCHOP {..}) = [("scroll", Resolve _shiftCScroll)] ++ chopBasePars n
   pars n@(ShuffleCHOP {..}) = [("method", Resolve _shuffleCMethod)] ++ chopBasePars n
   pars n@(SpeedCHOP {..}) = chopBasePars n
   pars n@(SOPToCHOP s) = [("sop", ResolveP s)] ++ chopBasePars n
@@ -804,6 +810,7 @@ instance Op CHOP where
                                       , "r" <$$> _topToChopRName
                                       , "g" <$$> _topToChopGName
                                       , "b" <$$> _topToChopBName
+                                      , "a" <$$> _topToChopAName
                                       ] ++ chopBasePars n
   pars n@(Timer {..}) = catMaybes [ ("segdat",) . ResolveP <$> _timerSegments
                                   , ("callbacks",) . ResolveP <$> _timerCallbacks
@@ -873,6 +880,7 @@ instance Op CHOP where
   opType (ResampleCHOP {}) = "resampleChop"
   opType (ScriptCHOP {}) = "scriptChop"
   opType (SelectCHOP {}) = "selectChop"
+  opType (ShiftCHOP {}) = "shiftChop"
   opType (ShuffleCHOP {}) = "shuffleChop"
   opType (SOPToCHOP _) = "sopToChop"
   opType (SpeedCHOP {}) = "speedChop"
@@ -1336,6 +1344,8 @@ selectC = selectC' id
 selectCConnect' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 selectCConnect' f = N . f <$> SelectCHOP Nothing Nothing . (:[])
 
+shiftC :: Tree Int -> Tree CHOP -> Tree CHOP
+shiftC s = N <$> ShiftCHOP s . (:[])
 
 shuffleC :: Tree Int -> Tree CHOP -> Tree CHOP
 shuffleC s = N <$> ShuffleCHOP s . (:[])
@@ -1355,7 +1365,7 @@ switchC :: Tree Int -> [Tree CHOP] -> Tree CHOP
 switchC i = N <$> SwitchCHOP i
 
 topToC' :: (CHOP -> CHOP) -> Tree TOP -> Tree CHOP
-topToC' f = N . f <$> TOPToCHOP Nothing Nothing Nothing Nothing Nothing
+topToC' f = N . f <$> TOPToCHOP Nothing Nothing Nothing Nothing Nothing Nothing
 topToC = topToC' id
 
 trailC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
