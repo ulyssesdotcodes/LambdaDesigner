@@ -1326,8 +1326,8 @@ resampleC' f tc = N . f <$> ResampleCHOP Nothing Nothing (Just $ bool tc) . (:[]
 scriptC :: String -> [Tree CHOP] -> Tree CHOP
 scriptC file = N <$> ScriptCHOP (fileD file)
 
-scriptCDAT :: String -> [Tree CHOP] -> Tree CHOP
-scriptCDAT file = N <$> ScriptCHOP (fileD file)
+scriptCDAT :: Tree DAT -> [Tree CHOP] -> Tree CHOP
+scriptCDAT dat = N <$> ScriptCHOP dat
 
 selectC' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
 selectC' f c = N . f $ SelectCHOP Nothing (Just c) []
