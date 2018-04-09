@@ -101,6 +101,7 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                  }
           | InCHOP
           | Lag { _lagLag :: Vec2
+                , _chopTimeSlice :: Maybe (Tree Bool)
                 , _chopIns :: [Tree CHOP]
                 }
           | LeapMotion { _leapMotionPinchStrength :: Maybe (Tree Bool)
@@ -117,6 +118,9 @@ data CHOP = Analyze { _analyzeFunc :: Tree Int
                   , _logicConvert :: Maybe (Tree Int)
                   , _chopIns :: [Tree CHOP]
                   }
+          | LookupCHOP
+            { _chopIns :: [Tree CHOP]
+            }
           | Math { _mathAdd :: Maybe (Tree Float)
                  , _mathAddPost :: Maybe (Tree Float)
                  , _mathAlign :: Maybe (Tree Int)
@@ -755,6 +759,7 @@ instance Op CHOP where
   pars InCHOP = []
   pars n@(Lag {..}) = vec2Map ("1", "2") "lag" _lagLag ++ chopBasePars n
   pars n@(Logic p c _) = catMaybes ["preop" <$$> p, "convert" <$$> c] ++ chopBasePars n
+  pars n@(LookupCHOP {..}) = chopBasePars n
   pars n@(Limit {..}) = 
     [ ("type",) . Resolve $ _limitCType
     , ("min",) . Resolve $ _limitCMin
@@ -864,6 +869,7 @@ instance Op CHOP where
   opType (Lag {}) = "lag"
   opType (Limit {}) = "limitChop"
   opType (Logic {}) = "logic"
+  opType (LookupCHOP {}) = "lookupChop"
   opType (LeapMotion {}) = "leapmotion"
   opType (Math {}) = "math"
   opType (MergeCHOP {}) = "mergeChop"
@@ -1262,9 +1268,9 @@ hold' f h t = N <$> f $ Hold [h, t]
 hold = hold' id
 
 lag' :: (CHOP -> CHOP) -> Tree CHOP -> Tree CHOP
-lag' f = N . f <$> Lag emptyV2 . (:[])
+lag' f = N . f <$> Lag emptyV2 Nothing . (:[])
 lag :: Tree Float -> Tree Float -> Tree CHOP -> Tree CHOP
-lag a b t = N $ Lag (Just a, Just b) [t]
+lag a b t = N $ Lag (Just a, Just b) Nothing [t]
 
 leapmotion' :: (CHOP -> CHOP) -> Tree CHOP
 leapmotion' f = N . f $ LeapMotion Nothing Nothing
@@ -1277,6 +1283,9 @@ limitC = limitC' id
 logic' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 logic' f = N <$> f . Logic Nothing Nothing
 logic = logic' id
+
+lookupC :: Tree CHOP -> Tree CHOP -> Tree CHOP
+lookupC a b = N $ LookupCHOP [a, b]
 
 math' :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 math' f = N <$> f . Math Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 emptyV2
