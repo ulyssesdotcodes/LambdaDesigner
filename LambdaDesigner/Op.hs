@@ -346,7 +346,9 @@ data TOP = Blur { _blurSize :: Tree Float
                 , _topIns :: [Tree TOP]
                 , _topPasses :: Maybe (Tree Int)
                 }
-           | CHOPToTOP { _chopToTopChop :: Tree CHOP }
+           | CHOPToTOP { _chopToTopChop :: Tree CHOP 
+                       , _chopToTopFormat :: Maybe (Tree Int)
+                       }
            | CircleTOP
            | CompositeTOP { _compTOperand :: Tree Int
                           , _topIns :: [Tree TOP]
@@ -1089,7 +1091,7 @@ instance Baseable SOP where
 
 instance Op TOP where
   pars t@(Blur {..}) = [("size",) . Resolve $ _blurSize] ++ topBasePars t
-  pars (CHOPToTOP chop) = [("chop", ResolveP chop)]
+  pars (CHOPToTOP {..}) = [("chop", ResolveP _chopToTopChop)] ++ catMaybes ["dataformat" <$$> _chopToTopFormat]
   pars t@(CompositeTOP {..}) = [("operand", Resolve _compTOperand)] ++ topBasePars t
   pars (Crop {..}) = catMaybes [ "cropleft" <$$> _cropLeft
                                , "cropright" <$$> _cropRight
@@ -1134,7 +1136,7 @@ instance Op TOP where
 
 
   opType (Blur {}) = "blur"
-  opType (CHOPToTOP _) = "chopToTop"
+  opType (CHOPToTOP {}) = "chopToTop"
   opType CircleTOP = "circleTop"
   opType (CompositeTOP {}) = "compositeTop"
   opType (Crop {}) = "crop"
@@ -1554,8 +1556,9 @@ blur' :: (TOP -> TOP) -> Tree Float -> Tree TOP -> Tree TOP
 blur' f b t = N . f $ Blur b [t] Nothing
 blur = blur' id
 
-chopToT :: Tree CHOP -> Tree TOP
-chopToT = N <$> CHOPToTOP
+chopToT' :: (TOP -> TOP) -> Tree CHOP -> Tree TOP
+chopToT' f c = N . f $ CHOPToTOP c Nothing
+chopToT = chopToT' id
 
 circleT = circleT' id
 circleT' :: (TOP -> TOP) -> Tree TOP
