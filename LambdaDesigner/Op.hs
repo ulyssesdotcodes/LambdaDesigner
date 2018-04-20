@@ -237,7 +237,8 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
          | CHOPToDAT { _chopToDatChop :: Tree CHOP
                      }
          | DatExec { _datExecDat :: Tree DAT
-                   , _deTableChange :: Maybe BS.ByteString
+                   , _datExecTableChange :: Maybe BS.ByteString
+                   , _datExecRowChange :: Maybe BS.ByteString
                    , _datVars :: [(ByteString, Tree ByteString)]
                    }
          | ExecuteDAT { _executeDatActive :: Maybe (Tree Bool)
@@ -917,7 +918,10 @@ instance Op DAT where
                                                                                     , ("valuechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> vc
                                                                                     ])
   pars (CHOPToDAT {..}) = [("chop", ResolveP _chopToDatChop)]
-  pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes [("tablechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> _deTableChange])
+  pars (DatExec {..}) = ("dat", ResolveP _datExecDat):(catMaybes 
+    [ ("tablechange",) . Resolve . LambdaDesigner.Op.bool . const True <$> _datExecTableChange
+    , ("rowchange",) . Resolve . LambdaDesigner.Op.bool . const True <$> _datExecRowChange
+    ])
   pars (ExecuteDAT {..}) = catMaybes [ "active" <$$> _executeDatActive
                                      , "start" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatStart)
                                      , "create" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatCreate)
@@ -977,7 +981,7 @@ instance Op DAT where
     where
       concatFunc (name, body) = BS.append (makec name) body
       makec prog = BS.concat ["def ", prog, "(channel, sampleIndex, val, prev):\n"]
-  text (DatExec {..}) = Just . BS.intercalate "\n\n" $ catMaybes [ BS.append "def tableChange(dat):\n" <$> _deTableChange]
+  text (DatExec {..}) = Just . BS.intercalate "\n\n" $ catMaybes [ BS.append "def tableChange(dat):\n" <$> _datExecTableChange, BS.append "def rowChange(dat, rows):\n" <$> _datExecRowChange]
   text (ExecuteDAT {..}) =
     Just . BS.intercalate "\n\n" $
       ((traverse %~ concatFunc make_) $ catMaybes [ ("onStart",) <$> _executeDatStart
@@ -1423,7 +1427,7 @@ chopToD :: Tree CHOP -> Tree DAT
 chopToD c = N $ CHOPToDAT c
 
 datExec' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
-datExec' f d = N $ f $ DatExec d Nothing []
+datExec' f d = N $ f $ DatExec d Nothing Nothing []
 
 executeD' :: (DAT -> DAT) -> [Tree DAT] -> Tree DAT
 executeD' f d = N $ f $ ExecuteDAT Nothing Nothing Nothing Nothing Nothing Nothing d []
