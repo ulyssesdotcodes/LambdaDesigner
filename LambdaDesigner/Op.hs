@@ -255,6 +255,7 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                      , _oscInDSplitBundle :: Maybe (Tree Bool)
                      , _oscInDSplitMessages :: Maybe (Tree Bool)
                      , _oscInDBundleTimestamp :: Maybe (Tree Bool)
+                     , _oscInDAddressScope :: Maybe (Tree ByteString)
                      }
          | OutDAT { _datIns :: [Tree DAT]
                   }
@@ -929,7 +930,12 @@ instance Op DAT where
                                      , "framestart" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatFramestart)
                                      , "frameend" <$$> (LambdaDesigner.Op.bool . const True <$> _executeDatFrameend)
                                      ]
-  pars n@(OscInDAT {..}) = ("port", _oscInDPort):(catMaybes ["splitbundle" <$$> _oscInDSplitBundle, "splitmessage" <$$> _oscInDSplitMessages, "bundletimestamp" <$$> _oscInDBundleTimestamp])
+  pars n@(OscInDAT {..}) = ("port", _oscInDPort):(catMaybes 
+    [ "splitbundle" <$$> _oscInDSplitBundle
+    , "splitmessage" <$$> _oscInDSplitMessages
+    , "bundletimestamp" <$$> _oscInDBundleTimestamp
+    , "addscope" <$$> _oscInDAddressScope
+    ])
   pars (ScriptDAT {..}) = [("callbacks", ResolveP _scriptDatDat)]
   pars (SelectDAT {..}) = maybe altChoice (\row -> [("rowindexstart", Resolve row), ("rowindexend", Resolve row), ("extractrows", Resolve $ int 2)]) _selectDRI ++ [("dat", ResolveP _selectDat)]
                           where
@@ -1436,9 +1442,9 @@ fileD' :: (DAT -> DAT) -> String -> Tree DAT
 fileD' f file = N . f $ (TextDAT Nothing (Just . PyExpr $ BS.pack ("\"" ++ file ++ "\"")) [])
 fileD = fileD' id
 
-oscinD :: Int -> Tree DAT
-oscinD p = N $ OscInDAT (Resolve $ int p) (Just $ bool True) (Just $ bool True) (Just $ bool True)
-
+oscinD' :: (DAT -> DAT) -> Int -> Tree DAT
+oscinD' f p = N . f $ OscInDAT (Resolve $ int p) (Just $ bool True) (Just $ bool True) (Just $ bool True) Nothing
+oscinD = oscinD' id
 
 scriptD' :: (DAT -> DAT) -> String -> [Tree DAT] -> Tree DAT
 scriptD' f file = N . f <$> ScriptDAT (fileD file) []
