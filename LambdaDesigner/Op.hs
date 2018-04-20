@@ -269,6 +269,11 @@ data DAT = ChopExec { _chopExecChop :: Tree CHOP
                      , _selectDRStartN :: Maybe (Tree ByteString)
                      , _selectDREndN :: Maybe (Tree ByteString)
                      , _selectDRExpr :: Maybe (Tree ByteString)
+                     , _selectDCStartI :: Maybe (Tree Int)
+                     , _selectDCEndI :: Maybe (Tree Int)
+                     , _selectDCStartN :: Maybe (Tree ByteString)
+                     , _selectDCEndN :: Maybe (Tree ByteString)
+                     , _selectDCExpr :: Maybe (Tree ByteString)
                      , _selectDat :: Tree DAT
                      }
          | SerialDAT { _serialDBaud :: Maybe (Tree Int)
@@ -939,12 +944,21 @@ instance Op DAT where
   pars (ScriptDAT {..}) = [("callbacks", ResolveP _scriptDatDat)]
   pars (SelectDAT {..}) = maybe altChoice (\row -> [("rowindexstart", Resolve row), ("rowindexend", Resolve row), ("extractrows", Resolve $ int 2)]) _selectDRI ++ [("dat", ResolveP _selectDat)]
                           where
-                            altChoice = catMaybes [ ("rownamestart" <$$> _selectDRStartN)
+                            altChoice = catMaybes 
+                                    [ ("rownamestart" <$$> _selectDRStartN)
                                     , ("rowindexstart" <$$> _selectDRStartI)
                                     , ("rownameend" <$$> _selectDREndN)
                                     , ("rowindexend" <$$> _selectDREndI)
                                     , ("rowexpr" <$$> _selectDRExpr)
-                                    ] ++ [("extractrows", Resolve . int $ chooseType _selectDRExpr _selectDRStartN _selectDRStartI _selectDREndN _selectDREndI)]
+                                    , ("colnamestart" <$$> _selectDCStartN)
+                                    , ("colindexstart" <$$> _selectDCStartI)
+                                    , ("colnameend" <$$> _selectDCEndN)
+                                    , ("colindexend" <$$> _selectDCEndI)
+                                    , ("colexpr" <$$> _selectDCExpr)
+                                    ] ++ 
+                                    [ ("extractrows", Resolve . int $ chooseType _selectDRExpr _selectDRStartN _selectDRStartI _selectDREndN _selectDREndI)
+                                    , ("extractcols", Resolve . int $ chooseType _selectDCExpr _selectDCStartN _selectDCStartI _selectDCEndN _selectDCEndI)
+                                    ]
                             chooseType (Just _) _ _ _ _ = 6
                             chooseType _ (Just _) Nothing (Just _) Nothing = 1
                             chooseType _ Nothing (Just _) Nothing (Just _) = 2
@@ -1451,7 +1465,7 @@ scriptD' f file = N . f <$> ScriptDAT (fileD file) []
 scriptD = scriptD' id
 
 selectD' :: (DAT -> DAT) -> Tree DAT -> Tree DAT
-selectD' f t = N . f $ SelectDAT Nothing Nothing Nothing Nothing Nothing Nothing t
+selectD' f t = N . f $ SelectDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing t
 
 table :: Matrix BS.ByteString -> Tree DAT
 table t = N $ Table (Just t) Nothing
