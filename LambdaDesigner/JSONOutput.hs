@@ -7,9 +7,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module LambdaDesigner.OSC where
-
-import Prelude hiding (lookup)
+module LambdaDesigner.JSONOutput where
 
 import Debug.Trace
 
@@ -22,8 +20,6 @@ import Control.Monad
 import Data.Maybe
 import Data.Text.Encoding
 import GHC.Generics
-import Sound.OSC
-import Sound.OSC.Transport.FD as OT
 
 import Data.ByteString.Char8 as BS
 import Data.ByteString.Lazy as BSL
@@ -72,18 +68,6 @@ instance A.ToJSON JSONNode where
 
 
 type Messages = Trie [Messagable]
-
-
-instance Ord Message where
-  compare (Message (L.length . L.filter (=='/') -> counta) ((ASCII_String "create"):_)) (Message (L.length . L.filter (=='/') -> countb) ((ASCII_String "create"):_)) = compare counta countb
-  compare (Message _ ((ASCII_String "create"):_)) _ = LT
-  compare _ (Message _ ((ASCII_String "create"):_)) = GT
-  compare (Message _ ((ASCII_String "custompar"):_)) _ = GT
-  compare _ (Message _ ((ASCII_String "custompar"):_)) = LT
-  compare (Message _ ((ASCII_String "command"):_)) _ = GT
-  compare _ (Message _ ((ASCII_String "command"):_)) = LT
-  compare (Message _ ((ASCII_String "connect"):(Int32 i):_)) (Message _ ((ASCII_String "connect"):(Int32 i2):_)) = compare i i2
-  compare _ _ = EQ
 
 parseParam :: (Monad m) => Tree a -> StateT Messages m BS.ByteString
 parseParam t@(N p) = parseTree "" t >>= return . wrapOp
@@ -225,9 +209,9 @@ applyRevPars ms = L.foldl (\ms (a, msgs) -> parseMessages ms a msgs) ms $ T.toLi
     addConnect i addr (msg:msgs) = msg:(addConnect i addr msgs)
     addConnect i addr [] = [Connect i addr]
 
-makeMessages :: Messages -> [Message]
-makeMessages msgs = [Message ("/json") [ASCII_String $ BSL.toStrict . A.encode $ A.toJSON . A.object $
-                                        L.map (\(k, v) -> decodeUtf8 k A..= jsonNode v) $ T.toList $ applyRevPars msgs]]
+makeMessages :: Messages -> BS.ByteString
+makeMessages msgs = BSL.toStrict . A.encode $ A.toJSON . A.object $
+                    L.map (\(k, v) -> decodeUtf8 k A..= jsonNode v) $ T.toList $ applyRevPars msgs
 
 jsonNode :: [Messagable] -> JSONNode
 jsonNode = L.foldl modmsg emptyJsonNode
@@ -242,6 +226,3 @@ jsonNode = L.foldl modmsg emptyJsonNode
       jsnode & nodeCommands %~ \cs -> (c, as):cs
     modmsg jsnode (TextContent (Tx.pack . BS.unpack -> c)) = jsnode & nodeText ?~ c
     modmsg jsnode _ = jsnode
-
-sendMessages :: UDP -> [Message] -> IO ()
-sendMessages conn ms = OT.sendOSC conn $ Bundle 0 $ ms

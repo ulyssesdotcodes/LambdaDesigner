@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import LambdaDesigner.Lib
 
 main :: IO ()
-main = print "running"
+main = return ()
