@@ -15,16 +15,17 @@ import Data.Functor.Identity
 import Data.List
 import Data.Trie
 
-compile :: (Op a, Op b) => [Tree a] -> [Tree b] -> Messages -> BS.ByteString
+compile :: (Op a, Op b) => [Tree a] -> [Tree b] -> Messages -> Messages
 compile tas tbs state' = let
     ms = execState (mapM_ (\t -> parseTree "" t) tas) mempty
     ms' = execState (mapM_ (\t -> parseTree "" t) tbs) ms
-    state'' = unionR state' ms'
-    msgs = makeMessages state'
   in 
-    makeMessages ms'
+    unionR state' ms'
+
+printMessages :: Messages -> BS.ByteString
+printMessages state = makeMessages state
 
 topCompiler :: IO (Tree TOP -> BS.ByteString)
 topCompiler = do init <- newIORef mempty
                  initState <- readIORef init
-                 return $ flip (compile ([] :: [Tree TOP])) initState . (:[]) . outT
+                 return $ printMessages . flip (compile ([] :: [Tree TOP])) initState . (:[]) . outT
