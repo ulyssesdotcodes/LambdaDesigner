@@ -3,6 +3,7 @@
 module LambdaDesigner.Lib
     ( topCompiler
     , compile
+    , printMessages
     ) where
 
 import LambdaDesigner.JSONOutput
