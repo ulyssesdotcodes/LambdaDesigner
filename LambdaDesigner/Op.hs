@@ -399,9 +399,15 @@ data TOP = Blur { _blurSize :: Tree Float
                          }
            | NdiInTOP { _ndiinName :: Tree BS.ByteString
                       }
-           | NoiseTOP { _noiseTMonochrome :: Maybe (Tree Bool)
+           | NoiseTOP { _noiseTType :: Maybe (Tree Int)
+                      , _noiseTMonochrome :: Maybe (Tree Bool)
                       , _noiseTResolution :: IVec2
                       , _noiseTTranslate :: Vec3
+                      , _noiseTHarmonicGain :: Maybe (Tree Float)
+                      , _noiseTHarmonicSpread :: Maybe (Tree Float)
+                      , _noiseTExponent :: Maybe (Tree Float)
+                      , _noiseTAmplitude :: Maybe (Tree Float)
+                      , _noiseTOffset :: Maybe (Tree Float)
                       }
            | NullTOP { _topIns :: [Tree TOP] }
            | OutTOP { _topIns :: [Tree TOP] }
@@ -1110,7 +1116,16 @@ instance Op TOP where
                                     ]
   pars (LevelTOP {..}) = catMaybes [("opacity" <$$> _levelOpacity), "brightness1" <$$> _levelBrightness, "invert" <$$> _levelInvert]
   pars n@(NdiInTOP {..}) = [ ("name", Resolve _ndiinName) ]
-  pars (NoiseTOP m r t) = (catMaybes [("mono" <$$> m)]) ++ (dimenMap "resolution" r) ++ vec3Map' "t" t
+  pars (NoiseTOP {..}) = (catMaybes [ ("mono" <$$> _noiseTMonochrome)
+                                     , ("type" <$$> _noiseTType)
+                                     , ("gain" <$$> _noiseTHarmonicGain)
+                                     , ("spread" <$$> _noiseTHarmonicSpread)
+                                     , ("exp" <$$> _noiseTExponent)
+                                     , ("amp" <$$> _noiseTAmplitude)
+                                     , ("offset" <$$> _noiseTOffset)
+                                     ]) 
+                                     ++ (dimenMap "resolution" _noiseTResolution) 
+                                     ++ vec3Map' "t" _noiseTTranslate
   pars (SwitchTOP {..}) = [("index", Resolve _switchTIndex)] ++ catMaybes ["blend" <$$> _switchTBlend]
   pars (Ramp t p r dat) = ("dat", ResolveP dat):(dimenMap "resolution" r) ++ (catMaybes [("type" <$$>  t), ("phase" <$$> p)])
   pars t@(RectangleTOP {..}) =  vec2Map' "size" _rectangleSize ++
@@ -1150,7 +1165,7 @@ instance Op TOP where
   opType (LevelTOP {}) = "levelTop"
   opType (MovieFileIn {}) = "movieFileIn"
   opType (NdiInTOP {}) = "ndiinTop"
-  opType (NoiseTOP _ _ _) = "noiseTop"
+  opType (NoiseTOP {}) = "noiseTop"
   opType (NullTOP {}) = "nullTop"
   opType (OutTOP {})= "outTop"
   opType (Ramp _ _ _ _) = "ramp"
@@ -1608,7 +1623,7 @@ ndiinT n = N $ (NdiInTOP (str n))
 
 
 noiseT' :: (TOP -> TOP) -> Tree TOP
-noiseT' f = N $ f $ NoiseTOP Nothing emptyV2 emptyV3
+noiseT' f = N $ f $ NoiseTOP Nothing Nothing emptyV2 emptyV3 Nothing Nothing Nothing Nothing Nothing
 
 nullT :: Tree TOP -> Tree TOP
 nullT = N . NullTOP . (:[])
