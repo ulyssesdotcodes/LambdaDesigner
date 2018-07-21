@@ -22,8 +22,9 @@ import qualified Data.ByteString.Char8 as BS
 go = 
   let
     constctest = feedbackC (constantCHOP (constantCHOPvalue1 ?~ float 0.5) []) id (mathCHOP (mathCHOPpreoff ?~ float 4) . (:[])) & beatCHOP id . (:[])
+    flocking = (tox "toxes/Visuals/flockingGpu.tox" [] (nullCHOP id [])) :: Tree TOP
   in do
-    putStrLn . show $ printMessages $ compile ( [] :: [Tree CHOP] ) [(tox "toxes/Visuals/flockingGpu.tox" [] (nullCHOP id [])) :: Tree TOP] (mempty :: Messages)
+    putStrLn . show $ printMessages $ compile ( [] :: [Tree CHOP] ) [constctest] (mempty :: Messages)
     -- run r [ outT $ chopToT $ logic' (logicCombineChops ?~ int 1) [logic' (logicCombineChans ?~ int 6) [constC [float 5, floor (seconds !% float 10)]], constC [float 1]]]
 
 -- go =
