@@ -5,13 +5,13 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module LambdaDesigner.JSONOutput where
 
 import Debug.Trace
 
 import LambdaDesigner.Op
+import LambdaDesigner.ParsedOps
 
 import Control.Lens
 import Control.Lens.Cons
@@ -51,8 +51,25 @@ data JSONNode = JSONNode { _nodeType :: Tx.Text
                          }
   deriving Generic
 
-makeLenses ''JSONNode
+nodeCommands :: Lens' JSONNode [(Tx.Text, [Tx.Text])]
+nodeCommands = lens _nodeCommands (\a b -> a {_nodeCommands = b})
+
+nodeType :: Lens' JSONNode Tx.Text
+nodeType = lens _nodeType (\a b -> a {_nodeType = b})
+
+nodeConnections :: Lens' JSONNode [(Int, Tx.Text)]
+nodeConnections = lens _nodeConnections (\a b -> a {_nodeConnections = b})
+
+nodeParameters :: Lens' JSONNode (Map Tx.Text Tx.Text)
+nodeParameters = lens _nodeParameters (\a b -> a {_nodeParameters = b})
+
+nodeText :: Lens' JSONNode (Maybe Tx.Text)
+nodeText = lens _nodeText (\a b -> a {_nodeText = b})
+
 emptyJsonNode = JSONNode "" [] mempty [] Nothing
+
+selectchoppars = SelectCHOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
+selecttoppars = SelectTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 instance A.ToJSON JSONNode where
   toJSON (JSONNode {..}) = A.object [ "ty" A..= _nodeType
@@ -71,7 +88,7 @@ type Messages = Trie [Messagable]
 
 parseParam :: (Monad m) => Tree a -> StateT Messages m BS.ByteString
 parseParam t@(N p) = parseTree "" t >>= return . wrapOp
-parseParam t@(Comp {}) = parseTree "" t >>= return . wrapOp
+-- parseParam t@(Comp {}) = parseTree "" t >>= return . wrapOp
 parseParam t@(FC {}) = parseTree "" t >>= return . wrapOp
 parseParam t@(FT {}) = parseTree "" t >>= return . wrapOp
 parseParam t@(Fix {}) = parseTree "" t >>= return . wrapOp
@@ -82,45 +99,47 @@ wrapOp op = BS.concat ["op(\"", BS.tail op, "\")"]
 
 parseTree :: (Monad m) => BS.ByteString -> Tree a -> StateT Messages m BS.ByteString
 parseTree pre (N p) = opsMessages pre p
-parseTree pre (Comp p child) = do addr <- opsMessages pre p
-                                  tr <- execStateT (parseTree pre child) T.empty
-                                  let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
-                                      modMsg ((RevParameter i a b):ms) = (RevParameter i (BS.concat [addr, a]) b):(modMsg ms)
-                                      modMsg (m:ms) = m:(modMsg ms)
-                                      modMsg [] = []
-                                  modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
-                                  return addr
-parseTree pre (BComp p f a) = do addr <- opsMessages pre p
-                                 aaddr <- parseTree pre a
-                                 let inNode = inOp
-                                     outNode = outOp
-                                 tr <- execStateT (parseTree pre $ outNode $ f inNode) T.empty
-                                 let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
-                                     modMsg (m:ms) = m:(modMsg ms)
-                                     modMsg [] = []
-                                 modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
-                                 modify $ T.adjust ((:) (Connect 0 aaddr)) addr
-                                 return addr
-parseTree pre (Tox p mf) = do addr <- opsMessages pre p
-                              case parseTree pre <$> mf of
-                                Just c -> do caddr <- c
-                                             modify $ T.adjust ((:) (Connect 0 caddr)) addr
-                                             return addr
-                                Nothing -> return addr
-parseTree pre (FC fpars reset loop sel) = do faddr <- parseTree pre $ N $ fpars & chopIns .~ [reset]
+-- parseTree pre (Comp p child) = 
+--   do 
+--     addr <- opsMessages pre p
+--     tr <- execStateT (parseTree pre child) T.empty
+--     let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
+--         modMsg ((RevParameter i a b):ms) = (RevParameter i (BS.concat [addr, a]) b):(modMsg ms)
+--         modMsg (m:ms) = m:(modMsg ms)
+--         modMsg [] = []
+--     modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
+--     return addr
+-- parseTree pre (BComp p f a) = do addr <- opsMessages pre p
+--                                  aaddr <- parseTree pre a
+--                                  let inNode = inOp
+--                                      outNode = outOp
+--                                  tr <- execStateT (parseTree pre $ outNode $ f inNode) T.empty
+--                                  let modMsg ((Connect i a):ms) = (Connect i (BS.concat [addr, a])):(modMsg ms)
+--                                      modMsg (m:ms) = m:(modMsg ms)
+--                                      modMsg [] = []
+--                                  modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
+--                                  modify $ T.adjust ((:) (Connect 0 aaddr)) addr
+--                                  return addr
+parseTree pre (Comp p cin) = 
+  do 
+    addr <- opsMessages pre p
+    caddr <- parseTree pre cin
+    modify $ T.adjust ((:) (Connect 0 caddr)) addr
+    return addr
+parseTree pre (FC fbnod reset loop sel) = do faddr <- parseTree pre $ N $ fbnod & chopIns .~ [reset]
                                              let fname = BS.tail faddr
-                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ N $ SelectCHOP Nothing Nothing [])
+                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ selectCHOP id [])
                                              let lname = BS.tail laddr
-                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ N (SelectCHOP Nothing (Just $ fix lname $ N $ SelectCHOP Nothing Nothing []) [])
+                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ selectCHOP (selectCHOPchop ?~ (fix lname $ selectCHOP id [])) []
                                              let sname = BS.tail saddr
                                              modify $ T.adjust ((:) (RevConnect 0 faddr)) saddr
                                              removeDuplicates saddr
                                              return laddr
-parseTree pre (FT fpars reset loop sel) = do faddr <- parseTree pre $ N $ fpars & topIns .~ [reset]
+parseTree pre (FT fbnod reset loop sel) = do faddr <- parseTree pre $ N $ fbnod & topIns .~ [reset]
                                              let fname = BS.tail faddr
-                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ N $ SelectTOP Nothing)
+                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ selectTOP id [])
                                              let lname = BS.tail laddr
-                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ N (SelectTOP $ Just $ fix lname $ N $ SelectTOP Nothing)
+                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ selectTOP (selectTOPtop ?~ (fix lname $ selectTOP id [])) []
                                              let sname = BS.tail saddr
                                              modify $ T.adjust ((:) (RevParameter "top" faddr laddr)) saddr
                                              removeDuplicates saddr

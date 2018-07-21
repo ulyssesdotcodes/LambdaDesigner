@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-11.2
+resolver: lts-12.1
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,6 +37,10 @@ resolver: lts-11.2
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
+- location:
+    git: git@github.com:ulyssesp/bytestring-trie.git
+    commit: a44aaaa93ea50914c105f85c67c7c5aa8c8d36d8
+  extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps: []

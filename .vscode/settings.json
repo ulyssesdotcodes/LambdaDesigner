@@ -1,4 +1,0 @@
-{
-    "languageServerHaskell.enableHIE": true,
-    "languageServerHaskell.hlintOn": true
-}

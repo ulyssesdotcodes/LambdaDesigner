@@ -8,6 +8,7 @@ module LambdaDesigner.Lib
 
 import LambdaDesigner.JSONOutput
 import LambdaDesigner.Op
+import LambdaDesigner.ParsedOps
 
 import Control.Monad.Trans.State
 import Data.ByteString.Char8 as BS
@@ -29,4 +30,4 @@ printMessages state = makeMessages state
 topCompiler :: IO (Tree TOP -> BS.ByteString)
 topCompiler = do init <- newIORef mempty
                  initState <- readIORef init
-                 return $ printMessages . flip (compile ([] :: [Tree TOP])) initState . (:[]) . outT
+                 return $ printMessages . flip (compile ([] :: [Tree TOP])) initState . (:[]) . outTOP id . (:[])

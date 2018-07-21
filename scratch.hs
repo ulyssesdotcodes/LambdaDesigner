@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import LambdaDesigner.Op
+import LambdaDesigner.ParsedOps
 import LambdaDesigner.Lib
+import LambdaDesigner.JSONOutput
 
 import Prelude hiding (floor, mod)
 
@@ -19,10 +21,9 @@ import qualified Data.ByteString.Char8 as BS
 
 go = 
   let
-    constctest = constC' (constCEndFrames ?~ int 10) [float 0.5]
+    constctest = feedbackC (constantCHOP (constantCHOPvalue1 ?~ float 0.5) []) id (mathCHOP (mathCHOPpreoff ?~ float 4) . (:[])) & beatCHOP id . (:[])
   in do
-    r <- newIORef mempty
-    run r [outC constctest]
+    putStrLn . show $ printMessages $ compile ( [] :: [Tree CHOP] ) [(tox "toxes/Visuals/flockingGpu.tox" [] (nullCHOP id [])) :: Tree TOP] (mempty :: Messages)
     -- run r [ outT $ chopToT $ logic' (logicCombineChops ?~ int 1) [logic' (logicCombineChans ?~ int 6) [constC [float 5, floor (seconds !% float 10)]], constC [float 1]]]
 
 -- go =

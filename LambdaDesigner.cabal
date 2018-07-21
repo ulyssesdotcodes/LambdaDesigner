@@ -19,10 +19,11 @@ library
   exposed-modules:     LambdaDesigner.Lib
                      , LambdaDesigner.JSONOutput
                      , LambdaDesigner.Op
+                     , LambdaDesigner.ParsedOps
   build-depends:       base >= 4.7 && < 5
                      , aeson
                      , bytestring
-                     , bytestring-trie
+                     , bytestring-trie >= 0.2.3.2
                      , containers >= 0.5
                      , lens
                      , lens-aeson
