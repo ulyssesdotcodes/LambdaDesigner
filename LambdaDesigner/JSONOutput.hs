@@ -88,7 +88,7 @@ type Messages = Trie [Messagable]
 
 parseParam :: (Monad m) => Tree a -> StateT Messages m BS.ByteString
 parseParam t@(N p) = parseTree "" t >>= return . wrapOp
--- parseParam t@(Comp {}) = parseTree "" t >>= return . wrapOp
+parseParam t@(Comp {}) = parseTree "" t >>= return . wrapOp
 parseParam t@(FC {}) = parseTree "" t >>= return . wrapOp
 parseParam t@(FT {}) = parseTree "" t >>= return . wrapOp
 parseParam t@(Fix {}) = parseTree "" t >>= return . wrapOp
@@ -126,34 +126,48 @@ parseTree pre (Comp p cin) =
     caddr <- parseTree pre cin
     modify $ T.adjust ((:) (Connect 0 caddr)) addr
     return addr
-parseTree pre (FC fbnod reset loop sel) = do faddr <- parseTree pre $ N $ fbnod & chopIns .~ [reset]
-                                             let fname = BS.tail faddr
-                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ selectCHOP id [])
-                                             let lname = BS.tail laddr
-                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ selectCHOP (selectCHOPchop ?~ (fix lname $ selectCHOP id [])) []
-                                             let sname = BS.tail saddr
-                                             modify $ T.adjust ((:) (RevConnect 0 faddr)) saddr
-                                             removeDuplicates saddr
-                                             return laddr
-parseTree pre (FT fbnod reset loop sel) = do faddr <- parseTree pre $ N $ fbnod & topIns .~ [reset]
-                                             let fname = BS.tail faddr
-                                             laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ selectTOP id [])
-                                             let lname = BS.tail laddr
-                                             saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ selectTOP (selectTOPtop ?~ (fix lname $ selectTOP id [])) []
-                                             let sname = BS.tail saddr
-                                             modify $ T.adjust ((:) (RevParameter "top" faddr laddr)) saddr
-                                             removeDuplicates saddr
-                                             return laddr
-parseTree pre (Fix name op) = do messages <- get
-                                 let name' = BS.append "/" name
-                                 case T.member name' messages of
-                                   True -> return name'
-                                   False -> do modify $ T.insert name' [(Fixed name)]
-                                               addr <- parseTree pre op
-                                               messages' <- get
-                                               modify $ T.insert name' . ((:) (Fixed name)) . fromJust $ T.lookup addr messages'
-                                               modify $ T.delete addr
-                                               return name'
+parseTree pre (Comp2 p cin1 cin2) = 
+  do 
+    addr <- opsMessages pre p
+    c1addr <- parseTree pre cin1
+    c2addr <- parseTree pre cin2
+    modify $ T.adjust ((++) [Connect 0 c1addr, Connect 1 c2addr]) addr
+    return addr
+parseTree pre (FC fbnod reset loop sel) = 
+  do 
+    faddr <- parseTree pre $ N $ fbnod & chopIns .~ [reset]
+    let fname = BS.tail faddr
+    laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ selectCHOP id [])
+    let lname = BS.tail laddr
+    saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ selectCHOP (selectCHOPchop ?~ (fix lname $ selectCHOP id [])) []
+    let sname = BS.tail saddr
+    modify $ T.adjust ((:) (RevConnect 0 faddr)) saddr
+    removeDuplicates saddr
+    return laddr
+parseTree pre (FT fbnod reset loop sel) = 
+  do 
+    faddr <- parseTree pre $ N $ fbnod & topIns .~ [reset]
+    let fname = BS.tail faddr
+    laddr <- parseTree (BS.concat [pre, "_", fname]) (loop $ fix fname $ selectTOP id)
+    let lname = BS.tail laddr
+    saddr <- parseTree (BS.concat [pre, "_", fname]) $ sel $ selectTOP (selectTOPtop ?~ (fix lname $ selectTOP id))
+    let sname = BS.tail saddr
+    modify $ T.adjust ((:) (RevParameter "top" faddr laddr)) saddr
+    removeDuplicates saddr
+    return laddr
+parseTree pre (Fix name op) = 
+  do 
+    messages <- get
+    let name' = BS.append "/" name
+    case T.member name' messages of
+      True -> return name'
+      False -> do 
+        modify $ T.insert name' [(Fixed name)]
+        addr <- parseTree pre op
+        messages' <- get
+        modify $ T.insert name' . ((:) (Fixed name)) . fromJust $ T.lookup addr messages'
+        modify $ T.delete addr
+        return name'
 
 parseTree pre (PyExpr s) = pure s
 parseTree pre (Mod f ta) = do aaddr <- parseParam ta

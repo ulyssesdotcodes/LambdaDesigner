@@ -30,4 +30,4 @@ printMessages state = makeMessages state
 topCompiler :: IO (Tree TOP -> BS.ByteString)
 topCompiler = do init <- newIORef mempty
                  initState <- readIORef init
-                 return $ printMessages . flip (compile ([] :: [Tree TOP])) initState . (:[]) . outTOP id . (:[])
+                 return $ printMessages . flip (compile ([] :: [Tree TOP])) initState . (:[]) . outTOP id
