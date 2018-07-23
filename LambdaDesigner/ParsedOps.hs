@@ -49867,6 +49867,9 @@ chopIns = lens _chopIns (\a b -> a {_chopIns = b})
 matIns :: Lens' MAT [Tree MAT]
 matIns = lens _matIns (\a b -> a {_matIns = b})
 
+textBlob :: Lens' DAT (Maybe ByteString)
+textBlob = lens _textBlob (\a b -> a {_textBlob = b})
+
 topCommands :: Lens' TOP [CommandType]
 topCommands = lens _topCommands (\a b -> a {_topCommands = b})
 sopCommands :: Lens' SOP [CommandType]
