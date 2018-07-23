@@ -8991,6 +8991,7 @@ data DAT =
     , _tableDATwritepulse :: Maybe (Tree Bool)
     , _tableDATloadonstart :: Maybe (Tree Bool)
     , _tableDATfile :: Maybe (Tree ByteString)
+    , _textBlob :: Maybe (ByteString)
     , _datCommands :: [CommandType]
     , _datIns :: [Tree DAT]
   }
@@ -21604,6 +21605,7 @@ instance Op DAT where
   opType (EtherdreamDAT {}) = "etherdreamDAT"
   opType (UdpinDAT {}) = "udpinDAT"
   text (TextDAT {..}) = _textBlob
+  text (TableDAT {..}) = _textBlob
   text _ = Nothing
   commands = view datCommands
   connections = view datIns
@@ -26074,7 +26076,7 @@ serialDAT :: (DAT -> DAT) -> Tree DAT
 serialDAT f =  N . f $ SerialDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 tableDAT :: (DAT -> DAT) -> Tree DAT
-tableDAT f =  N . f $ TableDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
+tableDAT f =  N . f $ TableDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 switchDAT :: (DAT -> DAT) -> [Tree DAT] -> Tree DAT
 switchDAT f =  N . f <$> SwitchDAT Nothing Nothing Nothing Nothing Nothing []
