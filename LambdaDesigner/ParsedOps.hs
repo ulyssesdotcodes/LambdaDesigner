@@ -21,8 +21,7 @@ data Tree a where
   N :: (Op a) => a -> Tree a
   FC :: CHOP -> Tree CHOP -> (Tree CHOP -> Tree CHOP) -> (Tree CHOP -> Tree CHOP) -> Tree CHOP
   FT :: TOP -> Tree TOP -> (Tree TOP -> Tree TOP) -> (Tree TOP -> Tree TOP) -> Tree TOP
-  Comp :: (Op a, Op b) => COMP -> Tree a -> Tree b
-  Comp2 :: (Op a, Op b, Op c) => COMP -> Tree a -> Tree b -> Tree c
+  Comp :: (Op a, Op b, Op c, Op d, Op e) => COMP -> [(ByteString, Tree ByteString)] -> [Tree a] -> [Tree b] -> [Tree c] -> [Tree d] ->Tree e
   Fix :: (Op a) => ByteString -> Tree a -> Tree a
   PyExpr :: ByteString -> Tree a
   Mod :: (ByteString -> ByteString) -> Tree a -> Tree b
@@ -95,8 +94,6 @@ class Op a where
   connections _ = []
   pars :: a -> [(ByteString, Tree ByteString)]
   pars _ = []
-  customPars :: a -> [(ByteString, Tree ByteString)]
-  customPars _ = []
   text :: a -> Maybe ByteString
   text _ = Nothing
   opType :: a -> ByteString

@@ -120,18 +120,23 @@ parseTree pre (N p) = opsMessages pre p
 --                                  modify $ unionR . T.fromList . fmap (\(a, ms) -> (BS.concat [addr, a], modMsg ms)) . T.toList $ tr
 --                                  modify $ T.adjust ((:) (Connect 0 aaddr)) addr
 --                                  return addr
-parseTree pre (Comp p cin) = 
+parseTree pre (Comp p params ain bin cin din) = 
   do 
     addr <- opsMessages pre p
-    caddr <- parseTree pre cin
-    modify $ T.adjust ((:) (Connect 0 caddr)) addr
-    return addr
-parseTree pre (Comp2 p cin1 cin2) = 
-  do 
-    addr <- opsMessages pre p
-    c1addr <- parseTree pre cin1
-    c2addr <- parseTree pre cin2
-    modify $ T.adjust ((++) [Connect 0 c1addr, Connect 1 c2addr]) addr
+    aaddrs <- sequence $ parseTree pre <$> ain
+    baddrs <- sequence $ parseTree pre <$> bin
+    caddrs <- sequence $ parseTree pre <$> cin
+    daddrs <- sequence $ parseTree pre <$> din
+    mapM_ (\(k, p) -> 
+      do 
+        val <- parseParam p
+        let msg = CustomPar k val
+        modify $ T.adjust ((:) msg) addr
+        return ()) (params)
+    let 
+      alladdrs = mconcat [aaddrs, baddrs, caddrs,daddrs]
+      connects = L.zipWith Connect [0..] alladdrs
+    modify $ T.adjust ((++) connects) addr 
     return addr
 parseTree pre (FC fbnod reset loop sel) = 
   do 
@@ -204,10 +209,6 @@ opsMessages pre a = do let ty = opType a
                                             let msg = Parameter k val
                                             modify $ T.adjust ((:) msg) addr
                                             return ()) (pars a)
-                       mapM_ (\(k, p) -> do val <- parseParam p
-                                            let msg = CustomPar k val
-                                            modify $ T.adjust ((:) msg) addr
-                                            return ()) (customPars a)
                        mapM_ (\(i, op) -> do a <- parseTree pre op
                                              let connect = Connect i a
                                              modify $ T.adjust ((:) connect) addr
