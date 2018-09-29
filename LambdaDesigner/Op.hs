@@ -178,3 +178,6 @@ tox t ps = Comp (bcomppars & (baseCOMPexternaltox ?~ str t) & (compCommands .~ [
 
 tox0 :: (Op a) => String -> [(ByteString, Tree ByteString)] -> Tree a
 tox0 t ps = Comp (bcomppars & (baseCOMPexternaltox ?~ (str t)) & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([] :: [Tree DAT]) ([] :: [Tree MAT])
+
+tox2 :: (Op a, Op b, Op c) => String -> [(ByteString, Tree ByteString)] -> Tree a -> Tree b -> Tree c
+tox2 t ps a b = Comp (bcomppars & (baseCOMPexternaltox ?~ str t) & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([a]) ([b])
