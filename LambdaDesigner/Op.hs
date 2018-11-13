@@ -173,11 +173,11 @@ feedbackT = FT $ FeedbackTOP Nothing Nothing Nothing Nothing Nothing Nothing Not
 
 bcomppars = BaseCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
-tox :: (Op a, Op b) => String -> [(ByteString, Tree ByteString)] -> Tree a -> Tree b
-tox t ps = Comp (bcomppars & (baseCOMPexternaltox ?~ str t) & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([] :: [Tree DAT]) . (:[])
+tox :: (Op a, Op b) => String -> (COMP -> COMP) -> [(ByteString, Tree ByteString)] -> Tree a -> Tree b
+tox t fs ps = Comp (bcomppars & (baseCOMPexternaltox ?~ str t) & fs & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([] :: [Tree DAT]) . (:[])
 
-tox0 :: (Op a) => String -> [(ByteString, Tree ByteString)] -> Tree a
-tox0 t ps = Comp (bcomppars & (baseCOMPexternaltox ?~ (str t)) & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([] :: [Tree DAT]) ([] :: [Tree MAT])
+tox0 :: (Op a) => String -> (COMP -> COMP) -> [(ByteString, Tree ByteString)] -> Tree a
+tox0 t fs ps = Comp (bcomppars & (baseCOMPexternaltox ?~ (str t)) & fs & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([] :: [Tree DAT]) ([] :: [Tree MAT])
 
-tox2 :: (Op a, Op b, Op c) => String -> [(ByteString, Tree ByteString)] -> Tree a -> Tree b -> Tree c
-tox2 t ps a b = Comp (bcomppars & (baseCOMPexternaltox ?~ str t) & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([a]) ([b])
+tox2 :: (Op a, Op b, Op c) => String -> (COMP -> COMP) -> [(ByteString, Tree ByteString)] -> Tree a -> Tree b -> Tree c
+tox2 t fs ps a b = Comp (bcomppars & (baseCOMPexternaltox ?~ str t) & fs & (compCommands .~ [Pulse "reinitnet" "1" 2])) ps ([] :: [Tree TOP]) ([] :: [Tree CHOP]) ([a]) ([b])
