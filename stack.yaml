@@ -39,7 +39,7 @@ packages:
 - '.'
 - location:
     git: git@github.com:ulyssesp/bytestring-trie.git
-    commit: 2b68fc072aa1368b78d9dbdea63ad3d06fcbe08b
+    commit: a44aaaa93ea50914c105f85c67c7c5aa8c8d36d8
   extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
