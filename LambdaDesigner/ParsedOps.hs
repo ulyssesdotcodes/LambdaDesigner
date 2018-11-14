@@ -90,6 +90,9 @@ a <$$> b = (a,) . Resolve <$> b
 str :: String -> Tree ByteString
 str = PyExpr . pack . show
 
+opName :: (Op a) => Tree a -> Tree ByteString
+opName = Mod (\o -> BS.concat [o, ".name"])
+
 
 class (Op a) => Baseable a where
   inOp :: Tree a
@@ -2720,7 +2723,8 @@ data TOP =
     , _topIns :: [Tree TOP]
   }
   | DepthTOP {
-    _depthTOParmenu :: Maybe (Tree Int)
+    _depthTOPrendertop :: Maybe (Tree TOP)
+    , _depthTOParmenu :: Maybe (Tree Int)
     , _depthTOPresmult :: Maybe (Tree Bool)
     , _depthTOPformat :: Maybe (Tree Int)
     , _depthTOPresolutionw :: Maybe (Tree Int)
@@ -15542,7 +15546,7 @@ instance Op TOP where
     , ["croptopunit" <$$> _renderTOPcroptopunit]
     , ["sampler3" <$$> _renderTOPsampler3]
     , ["inputfiltertype" <$$> _renderTOPinputfiltertype]
-    , [fmap ("lights",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderTOPlights)]
+    , [fmap ("lights",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _renderTOPlights)]
     , ["orderindtrans" <$$> _renderTOPorderindtrans]
     , ["top3extendv" <$$> _renderTOPtop3extendv]
     , ["armenu" <$$> _renderTOParmenu]
@@ -15566,7 +15570,7 @@ instance Op TOP where
     , ["top4anisotropy" <$$> _renderTOPtop4anisotropy]
     , ["multicamerahint" <$$> _renderTOPmulticamerahint]
     , ["cullface" <$$> _renderTOPcullface]
-    , [fmap ("geometry",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderTOPgeometry)]
+    , [fmap ("geometry",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _renderTOPgeometry)]
     , ["croptop" <$$> _renderTOPcroptop]
     , ["top1filter" <$$> _renderTOPtop1filter]
     , [("top3",) . ResolveP <$> _renderTOPtop3]
@@ -15595,7 +15599,7 @@ instance Op TOP where
     , ["top3extendu" <$$> _renderTOPtop3extendu]
     , ["resolutionw" <$$> _renderTOPresolutionw]
     , ["outputresolution" <$$> _renderTOPoutputresolution]
-    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderTOPcamera)]
+    , [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _renderTOPcamera)]
     , ["croprightunit" <$$> _renderTOPcroprightunit]
     , ["top2extendv" <$$> _renderTOPtop2extendv]
     , [("top1",) . ResolveP <$> _renderTOPtop1]
@@ -15634,7 +15638,8 @@ instance Op TOP where
     , ["chanmask" <$$> _slopeTOPchanmask]
     , ["inputfiltertype" <$$> _slopeTOPinputfiltertype]
     , ["offset2" <$$> _slopeTOPoffset2]]
-  pars (DepthTOP {..}) = catMaybes . mconcat $ [ ["armenu" <$$> _depthTOParmenu]
+  pars (DepthTOP {..}) = catMaybes . mconcat $ [ [("rendertop",) . ResolveP <$> _depthTOPrendertop]
+    , ["armenu" <$$> _depthTOParmenu]
     , ["resmult" <$$> _depthTOPresmult]
     , ["format" <$$> _depthTOPformat]
     , ["resolutionw" <$$> _depthTOPresolutionw]
@@ -15852,7 +15857,7 @@ instance Op TOP where
     , ["croptopunit" <$$> _renderpassTOPcroptopunit]
     , ["sampler3" <$$> _renderpassTOPsampler3]
     , ["inputfiltertype" <$$> _renderpassTOPinputfiltertype]
-    , [fmap ("lights",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpassTOPlights)]
+    , [fmap ("lights",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _renderpassTOPlights)]
     , ["orderindtrans" <$$> _renderpassTOPorderindtrans]
     , ["top3extendv" <$$> _renderpassTOPtop3extendv]
     , ["armenu" <$$> _renderpassTOParmenu]
@@ -15876,7 +15881,7 @@ instance Op TOP where
     , Just <$> vec4Map' "value3" _renderpassTOPvalue3
     , ["top4anisotropy" <$$> _renderpassTOPtop4anisotropy]
     , ["cullface" <$$> _renderpassTOPcullface]
-    , [fmap ("geometry",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpassTOPgeometry)]
+    , [fmap ("geometry",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _renderpassTOPgeometry)]
     , ["croptop" <$$> _renderpassTOPcroptop]
     , ["top1filter" <$$> _renderpassTOPtop1filter]
     , [("top3",) . ResolveP <$> _renderpassTOPtop3]
@@ -15904,7 +15909,7 @@ instance Op TOP where
     , ["top4extendu" <$$> _renderpassTOPtop4extendu]
     , [("renderinput",) . ResolveP <$> _renderpassTOPrenderinput]
     , ["outputresolution" <$$> _renderpassTOPoutputresolution]
-    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpassTOPcamera)]
+    , [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _renderpassTOPcamera)]
     , ["croprightunit" <$$> _renderpassTOPcroprightunit]
     , ["top2extendv" <$$> _renderpassTOPtop2extendv]
     , [("top1",) . ResolveP <$> _renderpassTOPtop1]
@@ -16539,7 +16544,7 @@ instance Op SOP where
     , ["accurate" <$$> _trailSOPaccurate]
     , ["cache" <$$> _trailSOPcache]]
   pars (OpenvrSOP {..}) = catMaybes . mconcat $ [ ["model" <$$> _openvrSOPmodel]]
-  pars (RectangleSOP {..}) = catMaybes . mconcat $ [ [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _rectangleSOPcamera)]
+  pars (RectangleSOP {..}) = catMaybes . mconcat $ [ [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _rectangleSOPcamera)]
     , ["camz" <$$> _rectangleSOPcamz]
     , ["orient" <$$> _rectangleSOPorient]
     , ["modifybounds" <$$> _rectangleSOPmodifybounds]
@@ -16748,7 +16753,7 @@ instance Op SOP where
     , ["stampc" <$$> _lsystemSOPstampc]]
   pars (SpriteSOP {..}) = catMaybes . mconcat $ [ ["constantwitdhfar" <$$> _spriteSOPconstantwitdhfar]
     , [("widthchop",) . ResolveP <$> _spriteSOPwidthchop]
-    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _spriteSOPcamera)]
+    , [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _spriteSOPcamera)]
     , [("colorchop",) . ResolveP <$> _spriteSOPcolorchop]
     , ["falloffstart" <$$> _spriteSOPfalloffstart]
     , ["falloffend" <$$> _spriteSOPfalloffend]
@@ -16817,7 +16822,7 @@ instance Op SOP where
     , Just <$> vec3Map' "t" _deleteSOPt
     , Just <$> vec3Map' "size" _deleteSOPsize
     , ["pattern" <$$> _deleteSOPpattern]
-    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _deleteSOPcamera)]
+    , [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _deleteSOPcamera)]
     , ["geotype" <$$> _deleteSOPgeotype]
     , ["removegrp" <$$> _deleteSOPremovegrp]
     , ["usenormal" <$$> _deleteSOPusenormal]
@@ -16858,7 +16863,7 @@ instance Op SOP where
     , ["group" <$$> _textureSOPgroup]
     , ["type" <$$> _textureSOPtype]
     , ["xord" <$$> _textureSOPxord]
-    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _textureSOPcamera)]
+    , [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _textureSOPcamera)]
     , Just <$> vec3Map' "t" _textureSOPt
     , ["rord" <$$> _textureSOPrord]
     , Just <$> vec3Map' "scaletwo" _textureSOPscaletwo
@@ -17717,7 +17722,7 @@ instance Op SOP where
     , ["transfer" <$$> _groupSOPtransfer]
     , ["destroyname" <$$> _groupSOPdestroyname]
     , ["pattern" <$$> _groupSOPpattern]
-    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _groupSOPcamera)]
+    , [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _groupSOPcamera)]
     , ["geotype" <$$> _groupSOPgeotype]
     , ["newname" <$$> _groupSOPnewname]
     , ["grp2" <$$> _groupSOPgrp2]
@@ -20050,7 +20055,7 @@ instance Op COMP where
     , ["opshortcut" <$$> _lightCOMPopshortcut]
     , Just <$> vec3Map' "s" _lightCOMPs
     , ["projmapextendw" <$$> _lightCOMPprojmapextendw]
-    , [fmap ("scenecamera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _lightCOMPscenecamera)]
+    , [fmap ("scenecamera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _lightCOMPscenecamera)]
     , ["extname2" <$$> _lightCOMPextname2]
     , ["reinitnet" <$$> _lightCOMPreinitnet]
     , ["projmapextendu" <$$> _lightCOMPprojmapextendu]
@@ -21496,7 +21501,7 @@ instance Op DAT where
     , ["uv" <$$> _renderpickDATuv]
     , [("callbacks",) . ResolveP <$> _renderpickDATcallbacks]
     , ["activatecallbacks" <$$> _renderpickDATactivatecallbacks]
-    , [fmap ("custompickcameras",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpickDATcustompickcameras)]
+    , [fmap ("custompickcameras",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _renderpickDATcustompickcameras)]
     , ["responsetime" <$$> _renderpickDATresponsetime]
     , ["customattrib2type" <$$> _renderpickDATcustomattrib2type]
     , ["mergeinputdat" <$$> _renderpickDATmergeinputdat]]
@@ -24067,7 +24072,7 @@ instance Op CHOP where
     , ["color" <$$> _scanCHOPcolor]
     , ["timeslice" <$$> _scanCHOPtimeslice]
     , ["height" <$$> _scanCHOPheight]
-    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _scanCHOPcamera)]
+    , [fmap ("camera",) . Just $ Prelude.foldr (\a b -> b !+ (str " " !+ a)) (str "") (ResolveP . opName <$> _scanCHOPcamera)]
     , ["vertexorder" <$$> _scanCHOPvertexorder]
     , ["trimval" <$$> _scanCHOPtrimval]
     , ["blankingcount" <$$> _scanCHOPblankingcount]
@@ -25524,7 +25529,7 @@ slopeTOP :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 slopeTOP f o =  N . f $ SlopeTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
 
 depthTOP :: (TOP -> TOP) -> Tree TOP
-depthTOP f =  N . f $ DepthTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
+depthTOP f =  N . f $ DepthTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 hsvtorgbTOP :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 hsvtorgbTOP f o =  N . f $ HsvtorgbTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
@@ -31264,6 +31269,8 @@ slopeTOPinputfiltertype = lens _slopeTOPinputfiltertype (\a b -> a {_slopeTOPinp
 slopeTOPoffset2 :: Lens' TOP (Maybe (Tree Float))
 slopeTOPoffset2 = lens _slopeTOPoffset2 (\a b -> a {_slopeTOPoffset2 = b})
 
+depthTOPrendertop :: Lens' TOP (Maybe (Tree TOP))
+depthTOPrendertop = lens _depthTOPrendertop (\a b -> a {_depthTOPrendertop = b})
 depthTOParmenu :: Lens' TOP (Maybe (Tree Int))
 depthTOParmenu = lens _depthTOParmenu (\a b -> a {_depthTOParmenu = b})
 depthTOPresmult :: Lens' TOP (Maybe (Tree Bool))
