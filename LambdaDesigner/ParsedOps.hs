@@ -5677,6 +5677,7 @@ data COMP =
     , _geometryCOMPbank :: Maybe (Tree Float)
     , _geometryCOMPrord :: Maybe (Tree Int)
     , _geometryCOMPinstancerz :: Maybe (Tree ByteString)
+    , _geometryCOMPinstanceop :: Maybe (Tree CHOP)
     , _geometryCOMPinstancetexextendu :: Maybe (Tree Int)
     , _geometryCOMPinstancea :: Maybe (Tree ByteString)
     , _geometryCOMPreinitextensions :: Maybe (Tree Bool)
@@ -5778,6 +5779,7 @@ data COMP =
     , _handleCOMPbank :: Maybe (Tree Float)
     , _handleCOMPrord :: Maybe (Tree Int)
     , _handleCOMPinstancerz :: Maybe (Tree ByteString)
+    , _handleCOMPinstanceop :: Maybe (Tree CHOP)
     , _handleCOMPinstancetexextendu :: Maybe (Tree Int)
     , _handleCOMPinstancea :: Maybe (Tree ByteString)
     , _handleCOMPreinitextensions :: Maybe (Tree Bool)
@@ -6401,6 +6403,7 @@ data COMP =
     , _blendCOMPbank :: Maybe (Tree Float)
     , _blendCOMPrord :: Maybe (Tree Int)
     , _blendCOMPinstancerz :: Maybe (Tree ByteString)
+    , _blendCOMPinstanceop :: Maybe (Tree CHOP)
     , _blendCOMPinstancemode :: Maybe (Tree Int)
     , _blendCOMPinstancetexextendu :: Maybe (Tree Int)
     , _blendCOMPinstancea :: Maybe (Tree ByteString)
@@ -6901,6 +6904,7 @@ data COMP =
     , _sharedmemoutCOMPbank :: Maybe (Tree Float)
     , _sharedmemoutCOMPrord :: Maybe (Tree Int)
     , _sharedmemoutCOMPinstancerz :: Maybe (Tree ByteString)
+    , _sharedmemoutCOMPinstanceop :: Maybe (Tree CHOP)
     , _sharedmemoutCOMPinstancetexextendu :: Maybe (Tree Int)
     , _sharedmemoutCOMPinstancea :: Maybe (Tree ByteString)
     , _sharedmemoutCOMPreinitextensions :: Maybe (Tree Bool)
@@ -7002,6 +7006,7 @@ data COMP =
     , _sharedmeminCOMPbank :: Maybe (Tree Float)
     , _sharedmeminCOMPrord :: Maybe (Tree Int)
     , _sharedmeminCOMPinstancerz :: Maybe (Tree ByteString)
+    , _sharedmeminCOMPinstanceop :: Maybe (Tree CHOP)
     , _sharedmeminCOMPinstancetexextendu :: Maybe (Tree Int)
     , _sharedmeminCOMPinstancea :: Maybe (Tree ByteString)
     , _sharedmeminCOMPreinitextensions :: Maybe (Tree Bool)
@@ -7321,6 +7326,7 @@ data COMP =
     , _nullCOMPbank :: Maybe (Tree Float)
     , _nullCOMPrord :: Maybe (Tree Int)
     , _nullCOMPinstancerz :: Maybe (Tree ByteString)
+    , _nullCOMPinstanceop :: Maybe (Tree CHOP)
     , _nullCOMPinstancetexextendu :: Maybe (Tree Int)
     , _nullCOMPinstancea :: Maybe (Tree ByteString)
     , _nullCOMPreinitextensions :: Maybe (Tree Bool)
@@ -7629,6 +7635,7 @@ data COMP =
     , _boneCOMPrord :: Maybe (Tree Int)
     , _boneCOMPcrtopheight :: Maybe (Tree Float)
     , _boneCOMPinstancerz :: Maybe (Tree ByteString)
+    , _boneCOMPinstanceop :: Maybe (Tree CHOP)
     , _boneCOMPinstancetexextendu :: Maybe (Tree Int)
     , _boneCOMPinstancea :: Maybe (Tree ByteString)
     , _boneCOMPreinitextensions :: Maybe (Tree Bool)
@@ -18282,6 +18289,7 @@ instance Op COMP where
     , ["bank" <$$> _geometryCOMPbank]
     , ["rord" <$$> _geometryCOMPrord]
     , ["instancerz" <$$> _geometryCOMPinstancerz]
+    , [("instanceop",) . ResolveP <$> _geometryCOMPinstanceop]
     , ["instancetexextendu" <$$> _geometryCOMPinstancetexextendu]
     , ["instancea" <$$> _geometryCOMPinstancea]
     , ["reinitextensions" <$$> _geometryCOMPreinitextensions]
@@ -18379,6 +18387,7 @@ instance Op COMP where
     , ["bank" <$$> _handleCOMPbank]
     , ["rord" <$$> _handleCOMPrord]
     , ["instancerz" <$$> _handleCOMPinstancerz]
+    , [("instanceop",) . ResolveP <$> _handleCOMPinstanceop]
     , ["instancetexextendu" <$$> _handleCOMPinstancetexextendu]
     , ["instancea" <$$> _handleCOMPinstancea]
     , ["reinitextensions" <$$> _handleCOMPreinitextensions]
@@ -18982,6 +18991,7 @@ instance Op COMP where
     , ["bank" <$$> _blendCOMPbank]
     , ["rord" <$$> _blendCOMPrord]
     , ["instancerz" <$$> _blendCOMPinstancerz]
+    , [("instanceop",) . ResolveP <$> _blendCOMPinstanceop]
     , ["instancemode" <$$> _blendCOMPinstancemode]
     , ["instancetexextendu" <$$> _blendCOMPinstancetexextendu]
     , ["instancea" <$$> _blendCOMPinstancea]
@@ -19462,6 +19472,7 @@ instance Op COMP where
     , ["bank" <$$> _sharedmemoutCOMPbank]
     , ["rord" <$$> _sharedmemoutCOMPrord]
     , ["instancerz" <$$> _sharedmemoutCOMPinstancerz]
+    , [("instanceop",) . ResolveP <$> _sharedmemoutCOMPinstanceop]
     , ["instancetexextendu" <$$> _sharedmemoutCOMPinstancetexextendu]
     , ["instancea" <$$> _sharedmemoutCOMPinstancea]
     , ["reinitextensions" <$$> _sharedmemoutCOMPreinitextensions]
@@ -19559,6 +19570,7 @@ instance Op COMP where
     , ["bank" <$$> _sharedmeminCOMPbank]
     , ["rord" <$$> _sharedmeminCOMPrord]
     , ["instancerz" <$$> _sharedmeminCOMPinstancerz]
+    , [("instanceop",) . ResolveP <$> _sharedmeminCOMPinstanceop]
     , ["instancetexextendu" <$$> _sharedmeminCOMPinstancetexextendu]
     , ["instancea" <$$> _sharedmeminCOMPinstancea]
     , ["reinitextensions" <$$> _sharedmeminCOMPreinitextensions]
@@ -19862,6 +19874,7 @@ instance Op COMP where
     , ["bank" <$$> _nullCOMPbank]
     , ["rord" <$$> _nullCOMPrord]
     , ["instancerz" <$$> _nullCOMPinstancerz]
+    , [("instanceop",) . ResolveP <$> _nullCOMPinstanceop]
     , ["instancetexextendu" <$$> _nullCOMPinstancetexextendu]
     , ["instancea" <$$> _nullCOMPinstancea]
     , ["reinitextensions" <$$> _nullCOMPreinitextensions]
@@ -20154,6 +20167,7 @@ instance Op COMP where
     , ["rord" <$$> _boneCOMPrord]
     , ["crtopheight" <$$> _boneCOMPcrtopheight]
     , ["instancerz" <$$> _boneCOMPinstancerz]
+    , [("instanceop",) . ResolveP <$> _boneCOMPinstanceop]
     , ["instancetexextendu" <$$> _boneCOMPinstancetexextendu]
     , ["instancea" <$$> _boneCOMPinstancea]
     , ["reinitextensions" <$$> _boneCOMPreinitextensions]
@@ -25903,10 +25917,10 @@ buttonCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 buttonCOMP f =  N . f <$> ButtonCOMP Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 geometryCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
-geometryCOMP f =  N . f <$> GeometryCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
+geometryCOMP f =  N . f <$> GeometryCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 handleCOMP :: (COMP -> COMP) -> Tree COMP -> Tree COMP
-handleCOMP f o =  N . f $ HandleCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing [] [o]
+handleCOMP f o =  N . f $ HandleCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing [] [o]
 
 tableCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 tableCOMP f =  N . f <$> TableCOMP Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
@@ -25921,7 +25935,7 @@ fieldCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 fieldCOMP f =  N . f <$> FieldCOMP Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 blendCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
-blendCOMP f =  N . f <$> BlendCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
+blendCOMP f =  N . f <$> BlendCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 parameterCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 parameterCOMP f =  N . f <$> ParameterCOMP Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
@@ -25936,10 +25950,10 @@ listCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 listCOMP f =  N . f <$> ListCOMP Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 sharedmemoutCOMP :: (COMP -> COMP) -> Tree COMP -> Tree COMP
-sharedmemoutCOMP f o =  N . f $ SharedmemoutCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
+sharedmemoutCOMP f o =  N . f $ SharedmemoutCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
 
 sharedmeminCOMP :: (COMP -> COMP) -> Tree COMP
-sharedmeminCOMP f =  N . f $ SharedmeminCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
+sharedmeminCOMP f =  N . f $ SharedmeminCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 cameraCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 cameraCOMP f =  N . f <$> CameraCOMP Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing emptyV3 []
@@ -25951,7 +25965,7 @@ environmentlightCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 environmentlightCOMP f =  N . f <$> EnvironmentlightCOMP Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV2 emptyV3 Nothing Nothing Nothing Nothing []
 
 nullCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
-nullCOMP f =  N . f <$> NullCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing []
+nullCOMP f =  N . f <$> NullCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing []
 
 lightCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 lightCOMP f =  N . f <$> LightCOMP Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 emptyV2 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing [] Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing []
@@ -25963,7 +25977,7 @@ timeCOMP :: (COMP -> COMP) -> Tree COMP
 timeCOMP f =  N . f $ TimeCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 boneCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
-boneCOMP f =  N . f <$> BoneCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing []
+boneCOMP f =  N . f <$> BoneCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing []
 
 animationCOMP :: (COMP -> COMP) -> Tree COMP
 animationCOMP f =  N . f $ AnimationCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
@@ -36238,6 +36252,8 @@ geometryCOMPrord :: Lens' COMP (Maybe (Tree Int))
 geometryCOMPrord = lens _geometryCOMPrord (\a b -> a {_geometryCOMPrord = b})
 geometryCOMPinstancerz :: Lens' COMP (Maybe (Tree ByteString))
 geometryCOMPinstancerz = lens _geometryCOMPinstancerz (\a b -> a {_geometryCOMPinstancerz = b})
+geometryCOMPinstanceop :: Lens' COMP (Maybe (Tree CHOP))
+geometryCOMPinstanceop = lens _geometryCOMPinstanceop (\a b -> a {_geometryCOMPinstanceop = b})
 geometryCOMPinstancetexextendu :: Lens' COMP (Maybe (Tree Int))
 geometryCOMPinstancetexextendu = lens _geometryCOMPinstancetexextendu (\a b -> a {_geometryCOMPinstancetexextendu = b})
 geometryCOMPinstancea :: Lens' COMP (Maybe (Tree ByteString))
@@ -36433,6 +36449,8 @@ handleCOMPrord :: Lens' COMP (Maybe (Tree Int))
 handleCOMPrord = lens _handleCOMPrord (\a b -> a {_handleCOMPrord = b})
 handleCOMPinstancerz :: Lens' COMP (Maybe (Tree ByteString))
 handleCOMPinstancerz = lens _handleCOMPinstancerz (\a b -> a {_handleCOMPinstancerz = b})
+handleCOMPinstanceop :: Lens' COMP (Maybe (Tree CHOP))
+handleCOMPinstanceop = lens _handleCOMPinstanceop (\a b -> a {_handleCOMPinstanceop = b})
 handleCOMPinstancetexextendu :: Lens' COMP (Maybe (Tree Int))
 handleCOMPinstancetexextendu = lens _handleCOMPinstancetexextendu (\a b -> a {_handleCOMPinstancetexextendu = b})
 handleCOMPinstancea :: Lens' COMP (Maybe (Tree ByteString))
@@ -37644,6 +37662,8 @@ blendCOMPrord :: Lens' COMP (Maybe (Tree Int))
 blendCOMPrord = lens _blendCOMPrord (\a b -> a {_blendCOMPrord = b})
 blendCOMPinstancerz :: Lens' COMP (Maybe (Tree ByteString))
 blendCOMPinstancerz = lens _blendCOMPinstancerz (\a b -> a {_blendCOMPinstancerz = b})
+blendCOMPinstanceop :: Lens' COMP (Maybe (Tree CHOP))
+blendCOMPinstanceop = lens _blendCOMPinstanceop (\a b -> a {_blendCOMPinstanceop = b})
 blendCOMPinstancemode :: Lens' COMP (Maybe (Tree Int))
 blendCOMPinstancemode = lens _blendCOMPinstancemode (\a b -> a {_blendCOMPinstancemode = b})
 blendCOMPinstancetexextendu :: Lens' COMP (Maybe (Tree Int))
@@ -38609,6 +38629,8 @@ sharedmemoutCOMPrord :: Lens' COMP (Maybe (Tree Int))
 sharedmemoutCOMPrord = lens _sharedmemoutCOMPrord (\a b -> a {_sharedmemoutCOMPrord = b})
 sharedmemoutCOMPinstancerz :: Lens' COMP (Maybe (Tree ByteString))
 sharedmemoutCOMPinstancerz = lens _sharedmemoutCOMPinstancerz (\a b -> a {_sharedmemoutCOMPinstancerz = b})
+sharedmemoutCOMPinstanceop :: Lens' COMP (Maybe (Tree CHOP))
+sharedmemoutCOMPinstanceop = lens _sharedmemoutCOMPinstanceop (\a b -> a {_sharedmemoutCOMPinstanceop = b})
 sharedmemoutCOMPinstancetexextendu :: Lens' COMP (Maybe (Tree Int))
 sharedmemoutCOMPinstancetexextendu = lens _sharedmemoutCOMPinstancetexextendu (\a b -> a {_sharedmemoutCOMPinstancetexextendu = b})
 sharedmemoutCOMPinstancea :: Lens' COMP (Maybe (Tree ByteString))
@@ -38804,6 +38826,8 @@ sharedmeminCOMPrord :: Lens' COMP (Maybe (Tree Int))
 sharedmeminCOMPrord = lens _sharedmeminCOMPrord (\a b -> a {_sharedmeminCOMPrord = b})
 sharedmeminCOMPinstancerz :: Lens' COMP (Maybe (Tree ByteString))
 sharedmeminCOMPinstancerz = lens _sharedmeminCOMPinstancerz (\a b -> a {_sharedmeminCOMPinstancerz = b})
+sharedmeminCOMPinstanceop :: Lens' COMP (Maybe (Tree CHOP))
+sharedmeminCOMPinstanceop = lens _sharedmeminCOMPinstanceop (\a b -> a {_sharedmeminCOMPinstanceop = b})
 sharedmeminCOMPinstancetexextendu :: Lens' COMP (Maybe (Tree Int))
 sharedmeminCOMPinstancetexextendu = lens _sharedmeminCOMPinstancetexextendu (\a b -> a {_sharedmeminCOMPinstancetexextendu = b})
 sharedmeminCOMPinstancea :: Lens' COMP (Maybe (Tree ByteString))
@@ -39414,6 +39438,8 @@ nullCOMPrord :: Lens' COMP (Maybe (Tree Int))
 nullCOMPrord = lens _nullCOMPrord (\a b -> a {_nullCOMPrord = b})
 nullCOMPinstancerz :: Lens' COMP (Maybe (Tree ByteString))
 nullCOMPinstancerz = lens _nullCOMPinstancerz (\a b -> a {_nullCOMPinstancerz = b})
+nullCOMPinstanceop :: Lens' COMP (Maybe (Tree CHOP))
+nullCOMPinstanceop = lens _nullCOMPinstanceop (\a b -> a {_nullCOMPinstanceop = b})
 nullCOMPinstancetexextendu :: Lens' COMP (Maybe (Tree Int))
 nullCOMPinstancetexextendu = lens _nullCOMPinstancetexextendu (\a b -> a {_nullCOMPinstancetexextendu = b})
 nullCOMPinstancea :: Lens' COMP (Maybe (Tree ByteString))
@@ -40002,6 +40028,8 @@ boneCOMPcrtopheight :: Lens' COMP (Maybe (Tree Float))
 boneCOMPcrtopheight = lens _boneCOMPcrtopheight (\a b -> a {_boneCOMPcrtopheight = b})
 boneCOMPinstancerz :: Lens' COMP (Maybe (Tree ByteString))
 boneCOMPinstancerz = lens _boneCOMPinstancerz (\a b -> a {_boneCOMPinstancerz = b})
+boneCOMPinstanceop :: Lens' COMP (Maybe (Tree CHOP))
+boneCOMPinstanceop = lens _boneCOMPinstanceop (\a b -> a {_boneCOMPinstanceop = b})
 boneCOMPinstancetexextendu :: Lens' COMP (Maybe (Tree Int))
 boneCOMPinstancetexextendu = lens _boneCOMPinstancetexextendu (\a b -> a {_boneCOMPinstancetexextendu = b})
 boneCOMPinstancea :: Lens' COMP (Maybe (Tree ByteString))
