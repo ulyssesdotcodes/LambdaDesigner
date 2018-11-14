@@ -84,6 +84,12 @@ rgbaMap = vec4Map ("r", "g", "b", "a")
 (<$$>) :: ByteString -> Maybe (Tree a) -> Maybe (ByteString, Tree ByteString)
 a <$$> b = (a,) . Resolve <$> b
 
+(!+) :: (Show a) => Tree a -> Tree a -> Tree a
+(!+) = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
+
+str :: String -> Tree ByteString
+str = PyExpr . pack . show
+
 
 class (Op a) => Baseable a where
   inOp :: Tree a
@@ -2614,6 +2620,7 @@ data TOP =
     , _renderTOPcroptopunit :: Maybe (Tree Int)
     , _renderTOPsampler3 :: Maybe (Tree ByteString)
     , _renderTOPinputfiltertype :: Maybe (Tree Int)
+    , _renderTOPlights :: [Tree COMP]
     , _renderTOPorderindtrans :: Maybe (Tree Bool)
     , _renderTOPtop3extendv :: Maybe (Tree Int)
     , _renderTOParmenu :: Maybe (Tree Int)
@@ -2637,7 +2644,7 @@ data TOP =
     , _renderTOPtop4anisotropy :: Maybe (Tree Int)
     , _renderTOPmulticamerahint :: Maybe (Tree Int)
     , _renderTOPcullface :: Maybe (Tree Int)
-    , _renderTOPgeometry :: Maybe (Tree COMP)
+    , _renderTOPgeometry :: [Tree COMP]
     , _renderTOPcroptop :: Maybe (Tree Float)
     , _renderTOPtop1filter :: Maybe (Tree Int)
     , _renderTOPtop3 :: Maybe (Tree TOP)
@@ -2666,6 +2673,7 @@ data TOP =
     , _renderTOPtop3extendu :: Maybe (Tree Int)
     , _renderTOPresolutionw :: Maybe (Tree Int)
     , _renderTOPoutputresolution :: Maybe (Tree Int)
+    , _renderTOPcamera :: [Tree COMP]
     , _renderTOPcroprightunit :: Maybe (Tree Int)
     , _renderTOPtop2extendv :: Maybe (Tree Int)
     , _renderTOPtop1 :: Maybe (Tree TOP)
@@ -2958,6 +2966,7 @@ data TOP =
     , _renderpassTOPcroptopunit :: Maybe (Tree Int)
     , _renderpassTOPsampler3 :: Maybe (Tree ByteString)
     , _renderpassTOPinputfiltertype :: Maybe (Tree Int)
+    , _renderpassTOPlights :: [Tree COMP]
     , _renderpassTOPorderindtrans :: Maybe (Tree Bool)
     , _renderpassTOPtop3extendv :: Maybe (Tree Int)
     , _renderpassTOParmenu :: Maybe (Tree Int)
@@ -2981,7 +2990,7 @@ data TOP =
     , _renderpassTOPvalue3 :: Vec4
     , _renderpassTOPtop4anisotropy :: Maybe (Tree Int)
     , _renderpassTOPcullface :: Maybe (Tree Int)
-    , _renderpassTOPgeometry :: Maybe (Tree COMP)
+    , _renderpassTOPgeometry :: [Tree COMP]
     , _renderpassTOPcroptop :: Maybe (Tree Float)
     , _renderpassTOPtop1filter :: Maybe (Tree Int)
     , _renderpassTOPtop3 :: Maybe (Tree TOP)
@@ -3009,6 +3018,7 @@ data TOP =
     , _renderpassTOPtop4extendu :: Maybe (Tree Int)
     , _renderpassTOPrenderinput :: Maybe (Tree TOP)
     , _renderpassTOPoutputresolution :: Maybe (Tree Int)
+    , _renderpassTOPcamera :: [Tree COMP]
     , _renderpassTOPcroprightunit :: Maybe (Tree Int)
     , _renderpassTOPtop2extendv :: Maybe (Tree Int)
     , _renderpassTOPtop1 :: Maybe (Tree TOP)
@@ -3618,7 +3628,8 @@ data SOP =
     , _sopIns :: [Tree SOP]
   }
   | RectangleSOP {
-    _rectangleSOPcamz :: Maybe (Tree Float)
+    _rectangleSOPcamera :: [Tree COMP]
+    , _rectangleSOPcamz :: Maybe (Tree Float)
     , _rectangleSOPorient :: Maybe (Tree Int)
     , _rectangleSOPmodifybounds :: Maybe (Tree Bool)
     , _rectangleSOPt :: Vec3
@@ -3890,6 +3901,7 @@ data SOP =
   | SpriteSOP {
     _spriteSOPconstantwitdhfar :: Maybe (Tree Float)
     , _spriteSOPwidthchop :: Maybe (Tree CHOP)
+    , _spriteSOPcamera :: [Tree COMP]
     , _spriteSOPcolorchop :: Maybe (Tree CHOP)
     , _spriteSOPfalloffstart :: Maybe (Tree Float)
     , _spriteSOPfalloffend :: Maybe (Tree Float)
@@ -3982,6 +3994,7 @@ data SOP =
     , _deleteSOPt :: Vec3
     , _deleteSOPsize :: Vec3
     , _deleteSOPpattern :: Maybe (Tree ByteString)
+    , _deleteSOPcamera :: [Tree COMP]
     , _deleteSOPgeotype :: Maybe (Tree Int)
     , _deleteSOPremovegrp :: Maybe (Tree Bool)
     , _deleteSOPusenormal :: Maybe (Tree Bool)
@@ -4034,6 +4047,7 @@ data SOP =
     , _textureSOPgroup :: Maybe (Tree ByteString)
     , _textureSOPtype :: Maybe (Tree Int)
     , _textureSOPxord :: Maybe (Tree Int)
+    , _textureSOPcamera :: [Tree COMP]
     , _textureSOPt :: Vec3
     , _textureSOPrord :: Maybe (Tree Int)
     , _textureSOPscaletwo :: Vec3
@@ -5105,6 +5119,7 @@ data SOP =
     , _groupSOPtransfer :: Maybe (Tree Bool)
     , _groupSOPdestroyname :: Maybe (Tree ByteString)
     , _groupSOPpattern :: Maybe (Tree ByteString)
+    , _groupSOPcamera :: [Tree COMP]
     , _groupSOPgeotype :: Maybe (Tree Int)
     , _groupSOPnewname :: Maybe (Tree ByteString)
     , _groupSOPgrp2 :: Maybe (Tree ByteString)
@@ -7485,6 +7500,7 @@ data COMP =
     , _lightCOMPopshortcut :: Maybe (Tree ByteString)
     , _lightCOMPs :: Vec3
     , _lightCOMPprojmapextendw :: Maybe (Tree Int)
+    , _lightCOMPscenecamera :: [Tree COMP]
     , _lightCOMPextname2 :: Maybe (Tree ByteString)
     , _lightCOMPreinitnet :: Maybe (Tree Bool)
     , _lightCOMPprojmapextendu :: Maybe (Tree Int)
@@ -9129,6 +9145,7 @@ data DAT =
     , _renderpickDATuv :: Maybe (Tree Bool)
     , _renderpickDATcallbacks :: Maybe (Tree DAT)
     , _renderpickDATactivatecallbacks :: Maybe (Tree Bool)
+    , _renderpickDATcustompickcameras :: [Tree COMP]
     , _renderpickDATresponsetime :: Maybe (Tree Int)
     , _renderpickDATcustomattrib2type :: Maybe (Tree Int)
     , _renderpickDATmergeinputdat :: Maybe (Tree Bool)
@@ -12191,6 +12208,7 @@ data CHOP =
     , _scanCHOPcolor :: Maybe (Tree Bool)
     , _scanCHOPtimeslice :: Maybe (Tree Bool)
     , _scanCHOPheight :: Maybe (Tree Int)
+    , _scanCHOPcamera :: [Tree COMP]
     , _scanCHOPvertexorder :: Maybe (Tree Bool)
     , _scanCHOPtrimval :: Maybe (Tree Float)
     , _scanCHOPblankingcount :: Maybe (Tree Int)
@@ -15517,6 +15535,7 @@ instance Op TOP where
     , ["croptopunit" <$$> _renderTOPcroptopunit]
     , ["sampler3" <$$> _renderTOPsampler3]
     , ["inputfiltertype" <$$> _renderTOPinputfiltertype]
+    , [fmap ("lights",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderTOPlights)]
     , ["orderindtrans" <$$> _renderTOPorderindtrans]
     , ["top3extendv" <$$> _renderTOPtop3extendv]
     , ["armenu" <$$> _renderTOParmenu]
@@ -15540,7 +15559,7 @@ instance Op TOP where
     , ["top4anisotropy" <$$> _renderTOPtop4anisotropy]
     , ["multicamerahint" <$$> _renderTOPmulticamerahint]
     , ["cullface" <$$> _renderTOPcullface]
-    , [("geometry",) . ResolveP <$> _renderTOPgeometry]
+    , [fmap ("geometry",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderTOPgeometry)]
     , ["croptop" <$$> _renderTOPcroptop]
     , ["top1filter" <$$> _renderTOPtop1filter]
     , [("top3",) . ResolveP <$> _renderTOPtop3]
@@ -15569,6 +15588,7 @@ instance Op TOP where
     , ["top3extendu" <$$> _renderTOPtop3extendu]
     , ["resolutionw" <$$> _renderTOPresolutionw]
     , ["outputresolution" <$$> _renderTOPoutputresolution]
+    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderTOPcamera)]
     , ["croprightunit" <$$> _renderTOPcroprightunit]
     , ["top2extendv" <$$> _renderTOPtop2extendv]
     , [("top1",) . ResolveP <$> _renderTOPtop1]
@@ -15825,6 +15845,7 @@ instance Op TOP where
     , ["croptopunit" <$$> _renderpassTOPcroptopunit]
     , ["sampler3" <$$> _renderpassTOPsampler3]
     , ["inputfiltertype" <$$> _renderpassTOPinputfiltertype]
+    , [fmap ("lights",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpassTOPlights)]
     , ["orderindtrans" <$$> _renderpassTOPorderindtrans]
     , ["top3extendv" <$$> _renderpassTOPtop3extendv]
     , ["armenu" <$$> _renderpassTOParmenu]
@@ -15848,7 +15869,7 @@ instance Op TOP where
     , Just <$> vec4Map' "value3" _renderpassTOPvalue3
     , ["top4anisotropy" <$$> _renderpassTOPtop4anisotropy]
     , ["cullface" <$$> _renderpassTOPcullface]
-    , [("geometry",) . ResolveP <$> _renderpassTOPgeometry]
+    , [fmap ("geometry",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpassTOPgeometry)]
     , ["croptop" <$$> _renderpassTOPcroptop]
     , ["top1filter" <$$> _renderpassTOPtop1filter]
     , [("top3",) . ResolveP <$> _renderpassTOPtop3]
@@ -15876,6 +15897,7 @@ instance Op TOP where
     , ["top4extendu" <$$> _renderpassTOPtop4extendu]
     , [("renderinput",) . ResolveP <$> _renderpassTOPrenderinput]
     , ["outputresolution" <$$> _renderpassTOPoutputresolution]
+    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpassTOPcamera)]
     , ["croprightunit" <$$> _renderpassTOPcroprightunit]
     , ["top2extendv" <$$> _renderpassTOPtop2extendv]
     , [("top1",) . ResolveP <$> _renderpassTOPtop1]
@@ -16510,7 +16532,8 @@ instance Op SOP where
     , ["accurate" <$$> _trailSOPaccurate]
     , ["cache" <$$> _trailSOPcache]]
   pars (OpenvrSOP {..}) = catMaybes . mconcat $ [ ["model" <$$> _openvrSOPmodel]]
-  pars (RectangleSOP {..}) = catMaybes . mconcat $ [ ["camz" <$$> _rectangleSOPcamz]
+  pars (RectangleSOP {..}) = catMaybes . mconcat $ [ [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _rectangleSOPcamera)]
+    , ["camz" <$$> _rectangleSOPcamz]
     , ["orient" <$$> _rectangleSOPorient]
     , ["modifybounds" <$$> _rectangleSOPmodifybounds]
     , Just <$> vec3Map' "t" _rectangleSOPt
@@ -16718,6 +16741,7 @@ instance Op SOP where
     , ["stampc" <$$> _lsystemSOPstampc]]
   pars (SpriteSOP {..}) = catMaybes . mconcat $ [ ["constantwitdhfar" <$$> _spriteSOPconstantwitdhfar]
     , [("widthchop",) . ResolveP <$> _spriteSOPwidthchop]
+    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _spriteSOPcamera)]
     , [("colorchop",) . ResolveP <$> _spriteSOPcolorchop]
     , ["falloffstart" <$$> _spriteSOPfalloffstart]
     , ["falloffend" <$$> _spriteSOPfalloffend]
@@ -16786,6 +16810,7 @@ instance Op SOP where
     , Just <$> vec3Map' "t" _deleteSOPt
     , Just <$> vec3Map' "size" _deleteSOPsize
     , ["pattern" <$$> _deleteSOPpattern]
+    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _deleteSOPcamera)]
     , ["geotype" <$$> _deleteSOPgeotype]
     , ["removegrp" <$$> _deleteSOPremovegrp]
     , ["usenormal" <$$> _deleteSOPusenormal]
@@ -16826,6 +16851,7 @@ instance Op SOP where
     , ["group" <$$> _textureSOPgroup]
     , ["type" <$$> _textureSOPtype]
     , ["xord" <$$> _textureSOPxord]
+    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _textureSOPcamera)]
     , Just <$> vec3Map' "t" _textureSOPt
     , ["rord" <$$> _textureSOPrord]
     , Just <$> vec3Map' "scaletwo" _textureSOPscaletwo
@@ -17684,6 +17710,7 @@ instance Op SOP where
     , ["transfer" <$$> _groupSOPtransfer]
     , ["destroyname" <$$> _groupSOPdestroyname]
     , ["pattern" <$$> _groupSOPpattern]
+    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _groupSOPcamera)]
     , ["geotype" <$$> _groupSOPgeotype]
     , ["newname" <$$> _groupSOPnewname]
     , ["grp2" <$$> _groupSOPgrp2]
@@ -20010,6 +20037,7 @@ instance Op COMP where
     , ["opshortcut" <$$> _lightCOMPopshortcut]
     , Just <$> vec3Map' "s" _lightCOMPs
     , ["projmapextendw" <$$> _lightCOMPprojmapextendw]
+    , [fmap ("scenecamera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _lightCOMPscenecamera)]
     , ["extname2" <$$> _lightCOMPextname2]
     , ["reinitnet" <$$> _lightCOMPreinitnet]
     , ["projmapextendu" <$$> _lightCOMPprojmapextendu]
@@ -21454,6 +21482,7 @@ instance Op DAT where
     , ["uv" <$$> _renderpickDATuv]
     , [("callbacks",) . ResolveP <$> _renderpickDATcallbacks]
     , ["activatecallbacks" <$$> _renderpickDATactivatecallbacks]
+    , [fmap ("custompickcameras",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _renderpickDATcustompickcameras)]
     , ["responsetime" <$$> _renderpickDATresponsetime]
     , ["customattrib2type" <$$> _renderpickDATcustomattrib2type]
     , ["mergeinputdat" <$$> _renderpickDATmergeinputdat]]
@@ -24024,6 +24053,7 @@ instance Op CHOP where
     , ["color" <$$> _scanCHOPcolor]
     , ["timeslice" <$$> _scanCHOPtimeslice]
     , ["height" <$$> _scanCHOPheight]
+    , [fmap ("camera",) . Just $ Prelude.foldr1 (\a b -> b !+ (str " " !+ a)) (Resolve <$> _scanCHOPcamera)]
     , ["vertexorder" <$$> _scanCHOPvertexorder]
     , ["trimval" <$$> _scanCHOPtrimval]
     , ["blankingcount" <$$> _scanCHOPblankingcount]
@@ -25474,7 +25504,7 @@ tileTOP :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 tileTOP f o =  N . f $ TileTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
 
 renderTOP :: (TOP -> TOP) -> Tree TOP
-renderTOP f =  N . f $ RenderTOP Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
+renderTOP f =  N . f $ RenderTOP Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 slopeTOP :: (TOP -> TOP) -> Tree TOP -> Tree TOP
 slopeTOP f o =  N . f $ SlopeTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
@@ -25501,7 +25531,7 @@ displaceTOP :: (TOP -> TOP) -> Tree TOP -> Tree TOP -> Tree TOP
 displaceTOP f o1 o2 =  N . f $ DisplaceTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o1, o2]
 
 renderpassTOP :: (TOP -> TOP) -> [Tree TOP] -> Tree TOP
-renderpassTOP f =  N . f <$> RenderpassTOP Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
+renderpassTOP f =  N . f <$> RenderpassTOP Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 switchTOP :: (TOP -> TOP) -> [Tree TOP] -> Tree TOP
 switchTOP f =  N . f <$> SwitchTOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
@@ -25564,7 +25594,7 @@ openvrSOP :: (SOP -> SOP) -> Tree SOP
 openvrSOP f =  N . f $ OpenvrSOP Nothing [] []
 
 rectangleSOP :: (SOP -> SOP) -> [Tree SOP] -> Tree SOP
-rectangleSOP f =  N . f <$> RectangleSOP Nothing Nothing Nothing emptyV3 Nothing emptyV2 Nothing []
+rectangleSOP f =  N . f <$> RectangleSOP [] Nothing Nothing Nothing emptyV3 Nothing emptyV2 Nothing []
 
 choptoSOP :: (SOP -> SOP) -> [Tree SOP] -> Tree SOP
 choptoSOP f =  N . f <$> ChoptoSOP Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing []
@@ -25612,7 +25642,7 @@ lsystemSOP :: (SOP -> SOP) -> [Tree SOP] -> Tree SOP
 lsystemSOP f =  N . f <$> LsystemSOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 spriteSOP :: (SOP -> SOP) -> Tree SOP
-spriteSOP f =  N . f $ SpriteSOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
+spriteSOP f =  N . f $ SpriteSOP Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 polystitchSOP :: (SOP -> SOP) -> Tree SOP -> Tree SOP
 polystitchSOP f o =  N . f $ PolystitchSOP Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
@@ -25630,7 +25660,7 @@ scriptSOP :: (SOP -> SOP) -> [Tree SOP] -> Tree SOP
 scriptSOP f =  N . f <$> ScriptSOP Nothing Nothing []
 
 deleteSOP :: (SOP -> SOP) -> Tree SOP -> Tree SOP
-deleteSOP f o =  N . f $ DeleteSOP Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing [] [o]
+deleteSOP f o =  N . f $ DeleteSOP Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing [] [o]
 
 tristripSOP :: (SOP -> SOP) -> Tree SOP -> Tree SOP
 tristripSOP f o =  N . f $ TristripSOP Nothing Nothing Nothing [] [o]
@@ -25639,7 +25669,7 @@ gridSOP :: (SOP -> SOP) -> [Tree SOP] -> Tree SOP
 gridSOP f =  N . f <$> GridSOP Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV2 Nothing Nothing Nothing Nothing Nothing Nothing []
 
 textureSOP :: (SOP -> SOP) -> Tree SOP -> Tree SOP
-textureSOP f o =  N . f $ TextureSOP Nothing emptyV3 emptyV3 emptyV3 emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing emptyV3 Nothing Nothing Nothing [] [o]
+textureSOP f o =  N . f $ TextureSOP Nothing emptyV3 emptyV3 emptyV3 emptyV3 Nothing Nothing Nothing Nothing [] emptyV3 Nothing emptyV3 Nothing Nothing Nothing [] [o]
 
 magnetSOP :: (SOP -> SOP) -> Tree SOP -> Tree SOP -> Tree SOP
 magnetSOP f o1 o2 =  N . f $ MagnetSOP Nothing Nothing emptyV3 emptyV3 emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing [] [o1, o2]
@@ -25801,7 +25831,7 @@ blendSOP :: (SOP -> SOP) -> [Tree SOP] -> Tree SOP
 blendSOP f =  N . f <$> BlendSOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
 
 groupSOP :: (SOP -> SOP) -> [Tree SOP] -> Tree SOP
-groupSOP f =  N . f <$> GroupSOP Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing []
+groupSOP f =  N . f <$> GroupSOP Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing []
 
 kinectSOP :: (SOP -> SOP) -> Tree SOP
 kinectSOP f =  N . f $ KinectSOP Nothing Nothing Nothing Nothing Nothing [] []
@@ -25924,7 +25954,7 @@ nullCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
 nullCOMP f =  N . f <$> NullCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing []
 
 lightCOMP :: (COMP -> COMP) -> [Tree COMP] -> Tree COMP
-lightCOMP f =  N . f <$> LightCOMP Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 emptyV2 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing []
+lightCOMP f =  N . f <$> LightCOMP Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing emptyV4 Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 emptyV3 emptyV2 Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing [] Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing []
 
 replicatorCOMP :: (COMP -> COMP) -> Tree COMP
 replicatorCOMP f =  N . f $ ReplicatorCOMP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
@@ -26095,7 +26125,7 @@ udtinDAT :: (DAT -> DAT) -> Tree DAT
 udtinDAT f =  N . f $ UdtinDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 renderpickDAT :: (DAT -> DAT) -> Tree DAT -> Tree DAT
-renderpickDAT f o =  N . f $ RenderpickDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [o]
+renderpickDAT f o =  N . f $ RenderpickDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing [] [o]
 
 fileinDAT :: (DAT -> DAT) -> Tree DAT
 fileinDAT f =  N . f $ FileinDAT Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
@@ -26512,7 +26542,7 @@ abletonlinkCHOP :: (CHOP -> CHOP) -> Tree CHOP
 abletonlinkCHOP f =  N . f $ AbletonlinkCHOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 scanCHOP :: (CHOP -> CHOP) -> Tree CHOP
-scanCHOP f =  N . f $ ScanCHOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
+scanCHOP f =  N . f $ ScanCHOP Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] []
 
 clipblenderCHOP :: (CHOP -> CHOP) -> [Tree CHOP] -> Tree CHOP
 clipblenderCHOP f =  N . f <$> ClipblenderCHOP Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing emptyV3 Nothing Nothing Nothing Nothing Nothing Nothing Nothing []
@@ -31034,6 +31064,8 @@ renderTOPsampler3 :: Lens' TOP (Maybe (Tree ByteString))
 renderTOPsampler3 = lens _renderTOPsampler3 (\a b -> a {_renderTOPsampler3 = b})
 renderTOPinputfiltertype :: Lens' TOP (Maybe (Tree Int))
 renderTOPinputfiltertype = lens _renderTOPinputfiltertype (\a b -> a {_renderTOPinputfiltertype = b})
+renderTOPlights :: Lens' TOP ([Tree COMP])
+renderTOPlights = lens _renderTOPlights (\a b -> a {_renderTOPlights = b})
 renderTOPorderindtrans :: Lens' TOP (Maybe (Tree Bool))
 renderTOPorderindtrans = lens _renderTOPorderindtrans (\a b -> a {_renderTOPorderindtrans = b})
 renderTOPtop3extendv :: Lens' TOP (Maybe (Tree Int))
@@ -31080,7 +31112,7 @@ renderTOPmulticamerahint :: Lens' TOP (Maybe (Tree Int))
 renderTOPmulticamerahint = lens _renderTOPmulticamerahint (\a b -> a {_renderTOPmulticamerahint = b})
 renderTOPcullface :: Lens' TOP (Maybe (Tree Int))
 renderTOPcullface = lens _renderTOPcullface (\a b -> a {_renderTOPcullface = b})
-renderTOPgeometry :: Lens' TOP (Maybe (Tree COMP))
+renderTOPgeometry :: Lens' TOP ([Tree COMP])
 renderTOPgeometry = lens _renderTOPgeometry (\a b -> a {_renderTOPgeometry = b})
 renderTOPcroptop :: Lens' TOP (Maybe (Tree Float))
 renderTOPcroptop = lens _renderTOPcroptop (\a b -> a {_renderTOPcroptop = b})
@@ -31138,6 +31170,8 @@ renderTOPresolutionw :: Lens' TOP (Maybe (Tree Int))
 renderTOPresolutionw = lens _renderTOPresolutionw (\a b -> a {_renderTOPresolutionw = b})
 renderTOPoutputresolution :: Lens' TOP (Maybe (Tree Int))
 renderTOPoutputresolution = lens _renderTOPoutputresolution (\a b -> a {_renderTOPoutputresolution = b})
+renderTOPcamera :: Lens' TOP ([Tree COMP])
+renderTOPcamera = lens _renderTOPcamera (\a b -> a {_renderTOPcamera = b})
 renderTOPcroprightunit :: Lens' TOP (Maybe (Tree Int))
 renderTOPcroprightunit = lens _renderTOPcroprightunit (\a b -> a {_renderTOPcroprightunit = b})
 renderTOPtop2extendv :: Lens' TOP (Maybe (Tree Int))
@@ -31659,6 +31693,8 @@ renderpassTOPsampler3 :: Lens' TOP (Maybe (Tree ByteString))
 renderpassTOPsampler3 = lens _renderpassTOPsampler3 (\a b -> a {_renderpassTOPsampler3 = b})
 renderpassTOPinputfiltertype :: Lens' TOP (Maybe (Tree Int))
 renderpassTOPinputfiltertype = lens _renderpassTOPinputfiltertype (\a b -> a {_renderpassTOPinputfiltertype = b})
+renderpassTOPlights :: Lens' TOP ([Tree COMP])
+renderpassTOPlights = lens _renderpassTOPlights (\a b -> a {_renderpassTOPlights = b})
 renderpassTOPorderindtrans :: Lens' TOP (Maybe (Tree Bool))
 renderpassTOPorderindtrans = lens _renderpassTOPorderindtrans (\a b -> a {_renderpassTOPorderindtrans = b})
 renderpassTOPtop3extendv :: Lens' TOP (Maybe (Tree Int))
@@ -31705,7 +31741,7 @@ renderpassTOPtop4anisotropy :: Lens' TOP (Maybe (Tree Int))
 renderpassTOPtop4anisotropy = lens _renderpassTOPtop4anisotropy (\a b -> a {_renderpassTOPtop4anisotropy = b})
 renderpassTOPcullface :: Lens' TOP (Maybe (Tree Int))
 renderpassTOPcullface = lens _renderpassTOPcullface (\a b -> a {_renderpassTOPcullface = b})
-renderpassTOPgeometry :: Lens' TOP (Maybe (Tree COMP))
+renderpassTOPgeometry :: Lens' TOP ([Tree COMP])
 renderpassTOPgeometry = lens _renderpassTOPgeometry (\a b -> a {_renderpassTOPgeometry = b})
 renderpassTOPcroptop :: Lens' TOP (Maybe (Tree Float))
 renderpassTOPcroptop = lens _renderpassTOPcroptop (\a b -> a {_renderpassTOPcroptop = b})
@@ -31761,6 +31797,8 @@ renderpassTOPrenderinput :: Lens' TOP (Maybe (Tree TOP))
 renderpassTOPrenderinput = lens _renderpassTOPrenderinput (\a b -> a {_renderpassTOPrenderinput = b})
 renderpassTOPoutputresolution :: Lens' TOP (Maybe (Tree Int))
 renderpassTOPoutputresolution = lens _renderpassTOPoutputresolution (\a b -> a {_renderpassTOPoutputresolution = b})
+renderpassTOPcamera :: Lens' TOP ([Tree COMP])
+renderpassTOPcamera = lens _renderpassTOPcamera (\a b -> a {_renderpassTOPcamera = b})
 renderpassTOPcroprightunit :: Lens' TOP (Maybe (Tree Int))
 renderpassTOPcroprightunit = lens _renderpassTOPcroprightunit (\a b -> a {_renderpassTOPcroprightunit = b})
 renderpassTOPtop2extendv :: Lens' TOP (Maybe (Tree Int))
@@ -32826,6 +32864,8 @@ trailSOPcache = lens _trailSOPcache (\a b -> a {_trailSOPcache = b})
 openvrSOPmodel :: Lens' SOP (Maybe (Tree ByteString))
 openvrSOPmodel = lens _openvrSOPmodel (\a b -> a {_openvrSOPmodel = b})
 
+rectangleSOPcamera :: Lens' SOP ([Tree COMP])
+rectangleSOPcamera = lens _rectangleSOPcamera (\a b -> a {_rectangleSOPcamera = b})
 rectangleSOPcamz :: Lens' SOP (Maybe (Tree Float))
 rectangleSOPcamz = lens _rectangleSOPcamz (\a b -> a {_rectangleSOPcamz = b})
 rectangleSOPorient :: Lens' SOP (Maybe (Tree Int))
@@ -33258,6 +33298,8 @@ spriteSOPconstantwitdhfar :: Lens' SOP (Maybe (Tree Float))
 spriteSOPconstantwitdhfar = lens _spriteSOPconstantwitdhfar (\a b -> a {_spriteSOPconstantwitdhfar = b})
 spriteSOPwidthchop :: Lens' SOP (Maybe (Tree CHOP))
 spriteSOPwidthchop = lens _spriteSOPwidthchop (\a b -> a {_spriteSOPwidthchop = b})
+spriteSOPcamera :: Lens' SOP ([Tree COMP])
+spriteSOPcamera = lens _spriteSOPcamera (\a b -> a {_spriteSOPcamera = b})
 spriteSOPcolorchop :: Lens' SOP (Maybe (Tree CHOP))
 spriteSOPcolorchop = lens _spriteSOPcolorchop (\a b -> a {_spriteSOPcolorchop = b})
 spriteSOPfalloffstart :: Lens' SOP (Maybe (Tree Float))
@@ -33400,6 +33442,8 @@ deleteSOPsize :: Lens' SOP (Vec3)
 deleteSOPsize = lens _deleteSOPsize (\a b -> a {_deleteSOPsize = b})
 deleteSOPpattern :: Lens' SOP (Maybe (Tree ByteString))
 deleteSOPpattern = lens _deleteSOPpattern (\a b -> a {_deleteSOPpattern = b})
+deleteSOPcamera :: Lens' SOP ([Tree COMP])
+deleteSOPcamera = lens _deleteSOPcamera (\a b -> a {_deleteSOPcamera = b})
 deleteSOPgeotype :: Lens' SOP (Maybe (Tree Int))
 deleteSOPgeotype = lens _deleteSOPgeotype (\a b -> a {_deleteSOPgeotype = b})
 deleteSOPremovegrp :: Lens' SOP (Maybe (Tree Bool))
@@ -33483,6 +33527,8 @@ textureSOPtype :: Lens' SOP (Maybe (Tree Int))
 textureSOPtype = lens _textureSOPtype (\a b -> a {_textureSOPtype = b})
 textureSOPxord :: Lens' SOP (Maybe (Tree Int))
 textureSOPxord = lens _textureSOPxord (\a b -> a {_textureSOPxord = b})
+textureSOPcamera :: Lens' SOP ([Tree COMP])
+textureSOPcamera = lens _textureSOPcamera (\a b -> a {_textureSOPcamera = b})
 textureSOPt :: Lens' SOP (Vec3)
 textureSOPt = lens _textureSOPt (\a b -> a {_textureSOPt = b})
 textureSOPrord :: Lens' SOP (Maybe (Tree Int))
@@ -35250,6 +35296,8 @@ groupSOPdestroyname :: Lens' SOP (Maybe (Tree ByteString))
 groupSOPdestroyname = lens _groupSOPdestroyname (\a b -> a {_groupSOPdestroyname = b})
 groupSOPpattern :: Lens' SOP (Maybe (Tree ByteString))
 groupSOPpattern = lens _groupSOPpattern (\a b -> a {_groupSOPpattern = b})
+groupSOPcamera :: Lens' SOP ([Tree COMP])
+groupSOPcamera = lens _groupSOPcamera (\a b -> a {_groupSOPcamera = b})
 groupSOPgeotype :: Lens' SOP (Maybe (Tree Int))
 groupSOPgeotype = lens _groupSOPgeotype (\a b -> a {_groupSOPgeotype = b})
 groupSOPnewname :: Lens' SOP (Maybe (Tree ByteString))
@@ -39717,6 +39765,8 @@ lightCOMPs :: Lens' COMP (Vec3)
 lightCOMPs = lens _lightCOMPs (\a b -> a {_lightCOMPs = b})
 lightCOMPprojmapextendw :: Lens' COMP (Maybe (Tree Int))
 lightCOMPprojmapextendw = lens _lightCOMPprojmapextendw (\a b -> a {_lightCOMPprojmapextendw = b})
+lightCOMPscenecamera :: Lens' COMP ([Tree COMP])
+lightCOMPscenecamera = lens _lightCOMPscenecamera (\a b -> a {_lightCOMPscenecamera = b})
 lightCOMPextname2 :: Lens' COMP (Maybe (Tree ByteString))
 lightCOMPextname2 = lens _lightCOMPextname2 (\a b -> a {_lightCOMPextname2 = b})
 lightCOMPreinitnet :: Lens' COMP (Maybe (Tree Bool))
@@ -42596,6 +42646,8 @@ renderpickDATcallbacks :: Lens' DAT (Maybe (Tree DAT))
 renderpickDATcallbacks = lens _renderpickDATcallbacks (\a b -> a {_renderpickDATcallbacks = b})
 renderpickDATactivatecallbacks :: Lens' DAT (Maybe (Tree Bool))
 renderpickDATactivatecallbacks = lens _renderpickDATactivatecallbacks (\a b -> a {_renderpickDATactivatecallbacks = b})
+renderpickDATcustompickcameras :: Lens' DAT ([Tree COMP])
+renderpickDATcustompickcameras = lens _renderpickDATcustompickcameras (\a b -> a {_renderpickDATcustompickcameras = b})
 renderpickDATresponsetime :: Lens' DAT (Maybe (Tree Int))
 renderpickDATresponsetime = lens _renderpickDATresponsetime (\a b -> a {_renderpickDATresponsetime = b})
 renderpickDATcustomattrib2type :: Lens' DAT (Maybe (Tree Int))
@@ -47741,6 +47793,8 @@ scanCHOPtimeslice :: Lens' CHOP (Maybe (Tree Bool))
 scanCHOPtimeslice = lens _scanCHOPtimeslice (\a b -> a {_scanCHOPtimeslice = b})
 scanCHOPheight :: Lens' CHOP (Maybe (Tree Int))
 scanCHOPheight = lens _scanCHOPheight (\a b -> a {_scanCHOPheight = b})
+scanCHOPcamera :: Lens' CHOP ([Tree COMP])
+scanCHOPcamera = lens _scanCHOPcamera (\a b -> a {_scanCHOPcamera = b})
 scanCHOPvertexorder :: Lens' CHOP (Maybe (Tree Bool))
 scanCHOPvertexorder = lens _scanCHOPvertexorder (\a b -> a {_scanCHOPvertexorder = b})
 scanCHOPtrimval :: Lens' CHOP (Maybe (Tree Float))

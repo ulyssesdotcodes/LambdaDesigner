@@ -33,9 +33,6 @@ int = PyExpr . pack . show
 bool :: Bool -> Tree Bool
 bool = PyExpr . DB.bool "0" "1"
 
-str :: String -> Tree ByteString
-str = PyExpr . pack . show
-
 bstr :: String -> Tree ByteString
 bstr = PyExpr . pack
 
@@ -50,9 +47,6 @@ castb = Mod (\fl -> BS.concat ["bool(", fl, ")"])
 
 caststr :: (Show a) => Tree a -> Tree ByteString
 caststr = Mod (\s -> BS.concat ["str(", s, ")"])
-
-(!+) :: (Show a) => Tree a -> Tree a -> Tree a
-(!+) = Mod2 (\a b -> BS.concat ["(", a, "+", b, ")"])
 
 (!-) :: (Show a) => Tree a -> Tree a -> Tree a
 (!-) = Mod2 (\a b -> BS.concat ["(", a, "-", b, ")"])
